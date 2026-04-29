@@ -141,7 +141,11 @@ resource pgFwAzure 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2024
   properties: { startIpAddress: '0.0.0.0', endIpAddress: '0.0.0.0' }
 }
 
-// Entra admin (your engagement-lead group; or a single user)
+// Entra admin (your engagement-lead group; or a single user).
+// `dependsOn pgFwAzure` is a workaround for a known transient issue where the
+// AAD-admin sub-resource fires before the server is fully accessible:
+//   "AadAuthOperationCannotBePerformedWhenServerIsNotAccessible"
+// Sequencing it after the firewall rule forces the server to finish waking up.
 resource pgAadAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2024-08-01' = {
   parent: pg
   name: postgresEntraAdminObjectId
@@ -150,6 +154,9 @@ resource pgAadAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@20
     principalName: postgresEntraAdminLogin
     tenantId: subscription().tenantId
   }
+  dependsOn: [
+    pgFwAzure
+  ]
 }
 
 resource pgDb 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-01' = {
