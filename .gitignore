@@ -1,0 +1,22 @@
+node_modules
+.next
+out
+.DS_Store
+*.log
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Local audit data — never commit
+data/pgdata/
+data/evidence/
+data/backups/
+data/import/
+
+# Old SQLite artifacts (retained for safety in case anyone has them)
+data/tracker.db
+data/tracker.db-journal
+data/tracker.db-wal
+data/tracker.db-shm

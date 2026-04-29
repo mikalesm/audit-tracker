@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Build (Next standalone)
+        run: npm run build
+
+      - name: Run migrations against pglite (smoke)
+        run: npm run migrate
+
+      - name: Build Docker image
+        run: docker build -t audit-tracker:ci .
+
+      - name: Smoke-test Docker image
+        run: |
+          docker run -d --name app -p 3000:3000 -e AUTH_DEV_BYPASS=1 -e NEXTAUTH_SECRET=ci-only-secret -e NEXTAUTH_URL=http://localhost:3000 audit-tracker:ci
+          for i in {1..30}; do
+            if curl -fs http://localhost:3000/api/healthz; then echo; echo OK; exit 0; fi
+            sleep 2
+          done
+          echo "healthz never responded"
+          docker logs app
+          exit 1

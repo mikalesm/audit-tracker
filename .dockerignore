@@ -1,0 +1,12 @@
+.git
+.github
+.next
+node_modules
+data
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+README.md
+infra

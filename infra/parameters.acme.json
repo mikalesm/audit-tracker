@@ -1,0 +1,26 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "clientSlug":               { "value": "acme" },
+    "env":                      { "value": "prod" },
+    "location":                 { "value": "eastus2" },
+    "appPlanSku":               { "value": "B2" },
+    "postgresSku":              { "value": "Standard_B1ms" },
+    "postgresStorageGB":        { "value": 32 },
+    "postgresEntraAdminObjectId": { "value": "REPLACE_WITH_AAD_GROUP_OR_USER_OBJECT_ID" },
+    "postgresEntraAdminLogin":  { "value": "audit-leads@yourtenant.onmicrosoft.com" },
+    "initialContainerImage":    { "value": "ghcr.io/your-org/audit-tracker:bootstrap" },
+    "azureAdClientId":          { "value": "REPLACE_WITH_APP_REGISTRATION_CLIENT_ID" },
+    "azureAdTenantId":          { "value": "REPLACE_WITH_TENANT_ID" },
+    "engagementName":           { "value": "Acme FY26 IT Audit" },
+    "nextAuthUrl":              { "value": "" },
+    "nextAuthSecret":           {
+      "reference": {
+        "keyVault": { "id": "/subscriptions/REPLACE/resourceGroups/REPLACE/providers/Microsoft.KeyVault/vaults/REPLACE" },
+        "secretName": "audit-tracker-nextauth-secret"
+      }
+    },
+    "azureAdClientSecret":      { "value": "" }
+  }
+}
