@@ -25,8 +25,8 @@ param env string = 'prod'
 @description('Primary Azure region.')
 param location string = 'eastus2'
 
-@description('App Service plan SKU. B2 is cheapest reasonable; P0v3 for prod.')
-@allowed(['B1','B2','P0v3','P1v3'])
+@description('App Service plan SKU. B1/B2 = Basic; S1/S2/S3 = Standard; P0v3/P1v3 = Premium V3. Choose by what your subscription has vCPU quota for.')
+@allowed(['B1','B2','S1','S2','S3','P0v3','P1v3'])
 param appPlanSku string = 'B2'
 
 @description('Postgres Flexible Server SKU.')

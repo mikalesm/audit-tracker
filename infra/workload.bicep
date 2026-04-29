@@ -159,11 +159,15 @@ resource pgDb 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2024-08-01' =
 }
 
 // ---- App Service Plan ----
+var appPlanTier = startsWith(appPlanSku, 'B')
+  ? 'Basic'
+  : (startsWith(appPlanSku, 'S') ? 'Standard' : 'PremiumV3')
+
 resource asp 'Microsoft.Web/serverfarms@2024-04-01' = {
   name: appPlanName
   location: location
   kind: 'linux'
-  sku: { name: appPlanSku, tier: startsWith(appPlanSku, 'B') ? 'Basic' : 'PremiumV3' }
+  sku: { name: appPlanSku, tier: appPlanTier }
   properties: { reserved: true }
 }
 
