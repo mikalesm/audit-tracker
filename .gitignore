@@ -4,6 +4,9 @@ out
 .DS_Store
 *.log
 
+# TypeScript incremental build artifacts
+*.tsbuildinfo
+
 # Env files
 .env
 .env.local
