@@ -1,0 +1,3 @@
+# Internal audit-engagement workspace. Do not index.
+User-agent: *
+Disallow: /
