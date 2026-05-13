@@ -37,5 +37,7 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)'],
+  // Skip healthz entirely so the smoke check (and Azure's health probe) never
+  // pays the cost of session decoding and cannot be tripped by auth misconfig.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/healthz|.*\\..*).*)'],
 };

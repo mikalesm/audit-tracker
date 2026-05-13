@@ -44,6 +44,7 @@ jobs:
             -e AUTH_DEV_BYPASS=1 \
             -e NEXTAUTH_SECRET=ci-only-secret \
             -e NEXTAUTH_URL=http://localhost:3000 \
+            -e AUTH_TRUST_HOST=true \
             audit-tracker:ci
           # Give the container a moment to actually start the process before polling.
           sleep 5
