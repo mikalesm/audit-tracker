@@ -181,7 +181,7 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
             <EntityFilter />
             <GlobalSearch />
             <ThemeToggle />
-            {authConfigured && <UserMenu user={me ? { userId: me.userId, email: me.email, role: me.currentRole ?? '' } : null} />}
+            {authConfigured && <UserMenu user={me ? { email: me.email, role: me.currentRole ?? '' } : null} />}
           </div>
         </div>
       </header>
