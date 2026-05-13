@@ -41,11 +41,13 @@ interface Me {
 
 export default function Shell({ settings, children }: { settings: EngagementSettings; children: React.ReactNode }) {
   const pathname = usePathname();
-  // Render bare chrome on the sign-in page, the engagement picker, and the
-  // new-engagement form. Those screens own their own layout.
+  // Render bare chrome on screens that own their own layout: sign-in, the
+  // engagement picker and its sub-pages, and the platform admin pages.
   if (pathname === '/signin'
     || pathname === '/engagements'
-    || pathname.startsWith('/engagements/')) return <>{children}</>;
+    || pathname.startsWith('/engagements/')
+    || pathname === '/admin'
+    || pathname.startsWith('/admin/')) return <>{children}</>;
 
   return (
     <EntityFilterProvider>
@@ -142,13 +144,22 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
                       View all engagements
                     </Link>
                     {me?.systemRole === 'platform_admin' && (
-                      <Link
-                        href="/engagements/new"
-                        onClick={() => setSwitcherOpen(false)}
-                        className="block px-2 py-1.5 rounded text-[12px] hover:bg-canvas dark:hover:bg-navy-800 font-medium"
-                      >
-                        + New audit
-                      </Link>
+                      <>
+                        <Link
+                          href="/engagements/new"
+                          onClick={() => setSwitcherOpen(false)}
+                          className="block px-2 py-1.5 rounded text-[12px] hover:bg-canvas dark:hover:bg-navy-800 font-medium"
+                        >
+                          + New audit
+                        </Link>
+                        <Link
+                          href="/admin"
+                          onClick={() => setSwitcherOpen(false)}
+                          className="block px-2 py-1.5 rounded text-[12px] hover:bg-canvas dark:hover:bg-navy-800"
+                        >
+                          Platform admin →
+                        </Link>
+                      </>
                     )}
                   </div>
                 </div>

@@ -166,6 +166,13 @@ export async function setUserActive(id: number, isActive: boolean): Promise<AppU
   return toUser(r);
 }
 
+export async function setUserSystemRole(id: number, systemRole: SystemRole): Promise<AppUser> {
+  const db = await getDb();
+  await db.query('UPDATE users SET system_role = $1 WHERE id = $2', [systemRole, id]);
+  const r = (await db.query<Row>('SELECT * FROM users WHERE id = $1', [id])).rows[0];
+  return toUser(r);
+}
+
 export async function logAccess(
   engagementId: number,
   userId: number,
