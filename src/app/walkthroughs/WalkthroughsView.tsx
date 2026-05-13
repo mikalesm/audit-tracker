@@ -65,6 +65,18 @@ export default function WalkthroughsView() {
               {loading && Array.from({ length: 6 }).map((_, i) => (
                 <tr key={i}><td colSpan={8} className="p-0"><div className="h-[34px] mx-3 my-1 skeleton" /></td></tr>
               ))}
+              {!loading && items.length === 0 && (
+                <tr><td colSpan={8} className="text-center py-12 text-[13px]">
+                  <div className="max-w-md mx-auto">
+                    <div className="text-ink-700 dark:text-slate-300 font-medium">No walkthroughs scheduled yet</div>
+                    <p className="text-[12px] text-ink-500 mt-1 leading-relaxed">
+                      Walkthroughs are working sessions with the audited team. They&apos;re usually imported from the standard Excel via{' '}
+                      <a href="/settings" className="text-navy-700 dark:text-navy-300 underline">Settings → Re-sync from Excel</a>,
+                      or seeded from a template when an engagement is created.
+                    </p>
+                  </div>
+                </td></tr>
+              )}
               {!loading && items.map(w => (
                 <tr key={w.id}>
                   <td className="text-ink-500 tabular">{w.num}</td>

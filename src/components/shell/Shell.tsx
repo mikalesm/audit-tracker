@@ -2,6 +2,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { ChevronDown, Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { EngagementSettings } from '@/types';
 import GlobalSearch from './GlobalSearch';
@@ -11,19 +12,48 @@ import EntityFilter from './EntityFilter';
 import UserMenu from './UserMenu';
 import { EntityFilterProvider } from './state';
 
-const NAV = [
-  { href: '/', label: 'Dashboard', shortcut: 'g d', minRole: 'client_reviewer' as const },
-  { href: '/pbc', label: 'PBC List', shortcut: 'g p', minRole: 'client_reviewer' as const },
-  { href: '/access', label: 'Access', shortcut: 'g a', minRole: 'client_reviewer' as const },
-  { href: '/walkthroughs', label: 'Walkthroughs', shortcut: 'g w', minRole: 'client_reviewer' as const },
-  { href: '/entities', label: 'Entities', shortcut: 'g e', minRole: 'client_reviewer' as const },
-  { href: '/sampling', label: 'Sampling', shortcut: 'g s', minRole: 'client_reviewer' as const },
-  { href: '/activity', label: 'Activity', shortcut: 'g t', minRole: 'auditor' as const },
-  { href: '/reports', label: 'Reports', shortcut: 'g r', minRole: 'auditor' as const },
-  { href: '/settings', label: 'Settings', shortcut: 'g ,', minRole: 'auditor_lead' as const },
+type Role = 'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer';
+
+interface NavItem {
+  href: string;
+  label: string;
+  shortcut: string;
+  minRole: Role;
+}
+
+const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
+  {
+    label: 'Workspace',
+    items: [
+      { href: '/',             label: 'Dashboard',    shortcut: 'g d', minRole: 'client_reviewer' },
+      { href: '/pbc',          label: 'PBC List',     shortcut: 'g p', minRole: 'client_reviewer' },
+      { href: '/walkthroughs', label: 'Walkthroughs', shortcut: 'g w', minRole: 'client_reviewer' },
+      { href: '/access',       label: 'Access',       shortcut: 'g a', minRole: 'client_reviewer' },
+    ],
+  },
+  {
+    label: 'Scope',
+    items: [
+      { href: '/entities', label: 'Entities', shortcut: 'g e', minRole: 'client_reviewer' },
+      { href: '/sampling', label: 'Sampling', shortcut: 'g s', minRole: 'client_reviewer' },
+    ],
+  },
+  {
+    label: 'Audit',
+    items: [
+      { href: '/activity', label: 'Activity', shortcut: 'g t', minRole: 'auditor' },
+      { href: '/reports',  label: 'Reports',  shortcut: 'g r', minRole: 'auditor' },
+    ],
+  },
+  {
+    label: 'Admin',
+    items: [
+      { href: '/settings', label: 'Settings', shortcut: 'g ,', minRole: 'auditor_lead' },
+    ],
+  },
 ];
 
-const ROLE_RANK: Record<string, number> = {
+const ROLE_RANK: Record<Role, number> = {
   auditor_lead: 4, auditor: 3, client_owner: 2, client_reviewer: 1,
 };
 
@@ -35,7 +65,7 @@ interface Me {
   userId: number;
   email: string;
   systemRole: 'platform_admin' | 'member';
-  currentRole: string | null;
+  currentRole: Role | null;
   currentEngagement: Engagement | null;
 }
 
@@ -63,6 +93,7 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
   const [engagements, setEngagements] = React.useState<EngagementForUser[]>([]);
   const [authConfigured, setAuthConfigured] = React.useState(true);
   const [switcherOpen, setSwitcherOpen] = React.useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
 
   React.useEffect(() => {
     fetch('/api/me').then(async r => {
@@ -70,16 +101,25 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
       const data = await r.json();
       setMe(data.user);
       setEngagements(data.engagements || []);
-      // If the actor has memberships but no engagement is selected, send them
-      // to the picker. Lets clients still poke at the auth-unconfigured demo.
       if (data.user?.currentEngagement === null && (data.engagements?.length ?? 0) > 0) {
         router.replace('/engagements');
       }
     }).catch(() => { setAuthConfigured(false); setMe(null); });
   }, [pathname, router]);
 
-  const role = me?.currentRole ?? (authConfigured ? 'client_reviewer' : 'auditor_lead');
+  // Close mobile drawer on every navigation.
+  React.useEffect(() => { setMobileNavOpen(false); }, [pathname]);
+
+  const role: Role = (me?.currentRole as Role) ?? (authConfigured ? 'client_reviewer' : 'auditor_lead');
   const currentEng = me?.currentEngagement ?? null;
+
+  // Filter groups by role; drop groups that become empty.
+  const visibleGroups = React.useMemo(
+    () => NAV_GROUPS
+      .map(g => ({ ...g, items: g.items.filter(i => ROLE_RANK[role] >= ROLE_RANK[i.minRole]) }))
+      .filter(g => g.items.length > 0),
+    [role]
+  );
 
   async function switchTo(slug: string) {
     await fetch(`/api/engagements/${slug}/switch`, { method: 'POST' });
@@ -90,16 +130,25 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
   return (
     <div className="min-h-screen flex flex-col">
       <header className="no-print sticky top-0 z-40 bg-white dark:bg-navy-950 border-b border-rule dark:border-navy-800">
-        <div className="px-6 h-12 flex items-center gap-4">
-          <Link href="/" className="flex items-center gap-2.5 shrink-0">
-            <div className="w-6 h-6 rounded bg-navy-700 flex items-center justify-center">
+        <div className="px-4 md:px-6 h-12 flex items-center gap-3">
+          {/* Mobile menu trigger */}
+          <button
+            onClick={() => setMobileNavOpen(o => !o)}
+            className="md:hidden p-1.5 rounded hover:bg-canvas dark:hover:bg-navy-900"
+            aria-label="Open menu"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
+
+          <Link href="/" className="flex items-center gap-2.5 shrink-0 min-w-0">
+            <div className="w-6 h-6 rounded bg-navy-700 flex items-center justify-center shrink-0">
               <span className="text-white text-[11px] font-bold tracking-tight">IT</span>
             </div>
-            <div className="leading-tight">
-              <div className="text-[13px] font-semibold tracking-tight">
+            <div className="leading-tight min-w-0 max-w-[200px] hidden sm:block">
+              <div className="text-[13px] font-semibold tracking-tight truncate">
                 {currentEng?.name ?? settings.projectTitle}
               </div>
-              <div className="text-[10px] uppercase tracking-wider text-ink-500 dark:text-slate-400">
+              <div className="text-[10px] uppercase tracking-wider text-ink-500 dark:text-slate-400 truncate">
                 {currentEng
                   ? `${currentEng.clientName}${currentEng.fiscalYear ? ' · ' + currentEng.fiscalYear : ''}`
                   : `${settings.clientName}${settings.auditPeriod ? ' · ' + settings.auditPeriod : ''}`}
@@ -107,14 +156,14 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
             </div>
           </Link>
 
-          {/* Engagement switcher */}
-          {engagements.length > 0 && (
+          {/* Engagement switcher (only when there are multiple memberships or actor is platform_admin) */}
+          {(engagements.length > 1 || me?.systemRole === 'platform_admin') && (
             <div className="relative">
               <button
                 onClick={() => setSwitcherOpen(o => !o)}
                 className="px-2 h-7 inline-flex items-center gap-1 rounded text-[12px] text-ink-500 hover:bg-canvas dark:hover:bg-navy-900 dark:text-slate-400"
               >
-                Switch ▾
+                Switch <ChevronDown className="w-3 h-3" />
               </button>
               {switcherOpen && (
                 <div className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-navy-900 border border-rule dark:border-navy-700 rounded shadow-lg z-50">
@@ -167,35 +216,83 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
             </div>
           )}
 
-          <nav className="flex items-center gap-0.5 ml-4">
-            {NAV
-              .filter(n => ROLE_RANK[role] >= ROLE_RANK[n.minRole])
-              .map(n => {
-                const active = n.href === '/' ? pathname === '/' : pathname.startsWith(n.href);
-                return (
-                  <Link
-                    key={n.href}
-                    href={n.href}
-                    className={cn(
-                      'px-3 h-7 inline-flex items-center rounded text-[13px] transition-colors',
-                      active
-                        ? 'bg-navy-50 text-navy-800 font-medium dark:bg-navy-800 dark:text-slate-100'
-                        : 'text-ink-700 hover:bg-canvas dark:text-slate-300 dark:hover:bg-navy-900'
-                    )}
-                  >
-                    {n.label}
-                  </Link>
-                );
-              })}
+          {/* Grouped nav (desktop only) */}
+          <nav className="hidden md:flex items-center gap-0 ml-2 min-w-0 flex-1 overflow-hidden">
+            {visibleGroups.map((g, gi) => (
+              <React.Fragment key={g.label}>
+                {gi > 0 && <span className="mx-2 h-4 w-px bg-rule dark:bg-navy-700 shrink-0" aria-hidden />}
+                <div className="flex items-center gap-0.5 shrink-0">
+                  {g.items.map(item => {
+                    const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={cn(
+                          'px-2.5 h-7 inline-flex items-center rounded text-[13px] transition-colors whitespace-nowrap',
+                          active
+                            ? 'bg-navy-50 text-navy-800 font-medium dark:bg-navy-800 dark:text-slate-100'
+                            : 'text-ink-700 hover:bg-canvas dark:text-slate-300 dark:hover:bg-navy-900'
+                        )}
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </React.Fragment>
+            ))}
           </nav>
-          <div className="ml-auto flex items-center gap-2">
-            <EntityFilter />
-            <GlobalSearch />
+
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            <div className="hidden md:flex items-center gap-2">
+              <EntityFilter />
+              <GlobalSearch />
+            </div>
             <ThemeToggle />
             {authConfigured && <UserMenu user={me ? { email: me.email, role: me.currentRole ?? '' } : null} />}
           </div>
         </div>
+
+        {/* Mobile drawer */}
+        {mobileNavOpen && (
+          <div className="md:hidden border-t border-rule dark:border-navy-800 bg-white dark:bg-navy-950">
+            <div className="px-4 py-3 space-y-3">
+              {visibleGroups.map(g => (
+                <div key={g.label}>
+                  <div className="text-[10px] uppercase tracking-wider font-semibold text-ink-500 dark:text-slate-400 mb-1">
+                    {g.label}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1">
+                    {g.items.map(item => {
+                      const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={cn(
+                            'px-2 py-1.5 rounded text-[13px]',
+                            active
+                              ? 'bg-navy-50 text-navy-800 font-medium dark:bg-navy-800 dark:text-slate-100'
+                              : 'text-ink-700 hover:bg-canvas dark:text-slate-300 dark:hover:bg-navy-900'
+                          )}
+                        >
+                          {item.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              <div className="border-t border-rule dark:border-navy-800 pt-3 flex items-center gap-2">
+                <EntityFilter />
+                <GlobalSearch />
+              </div>
+            </div>
+          </div>
+        )}
       </header>
+
       <main className="flex-1 min-w-0">{children}</main>
       <KeyboardShortcuts />
     </div>

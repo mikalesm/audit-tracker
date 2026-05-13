@@ -7,12 +7,24 @@ import { InlineDate, InlineSelect, InlineText } from '@/components/tables/Inline
 import { STATUSES, PRIORITIES, TSC_VALUES, formatDate, formatDateTime, fileSize, isOverdue } from '@/lib/utils';
 import { Upload, X, Trash2, Paperclip, Link2, Plus, Search } from 'lucide-react';
 
-export default function PBCDetailPanel({ item, onClose, onPatch }: {
+type Role = 'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer';
+
+export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor_lead' }: {
   item: PBCItem;
   onClose: () => void;
   onPatch: (patch: Partial<PBCItem>) => void;
+  /** Used to gate the Internal Comments tab to auditors only. */
+  role?: Role;
 }) {
-  const [tab, setTab] = React.useState<'detail' | 'evidence' | 'activity' | 'comments'>('detail');
+  const isAuditor = role === 'auditor_lead' || role === 'auditor';
+  type Tab = 'detail' | 'evidence' | 'activity' | 'comments';
+  const initialTab: Tab = 'detail';
+  const [tab, setTab] = React.useState<Tab>(initialTab);
+  // If a client is somehow on the comments tab (e.g. role changed mid-session), snap back.
+  React.useEffect(() => { if (!isAuditor && tab === 'comments') setTab('detail'); }, [isAuditor, tab]);
+  const tabs: Tab[] = isAuditor
+    ? ['detail', 'evidence', 'activity', 'comments']
+    : ['detail', 'evidence', 'activity'];
   const [evidence, setEvidence] = React.useState<EvidenceFile[]>([]);
   const [activity, setActivity] = React.useState<ActivityLog[]>([]);
   const [dragOver, setDragOver] = React.useState(false);
@@ -95,7 +107,7 @@ export default function PBCDetailPanel({ item, onClose, onPatch }: {
             </button>
           </div>
           <div className="mt-4 flex items-center gap-1 -mb-3">
-            {(['detail','evidence','activity','comments'] as const).map(t => (
+            {tabs.map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -239,7 +251,7 @@ export default function PBCDetailPanel({ item, onClose, onPatch }: {
             </div>
           )}
 
-          {tab === 'comments' && (
+          {isAuditor && tab === 'comments' && (
             <div className="space-y-3">
               <Section label="Internal comments (auditor-only)">
                 <InlineText value={item.internalComments} onCommit={v => onPatch({ internalComments: v })} placeholder="Notes for the audit team. Not exported to client report." multiline />
