@@ -30,6 +30,12 @@ if (isProdAuth) {
 export const authConfig: NextAuthConfig = {
   providers,
   secret: process.env.NEXTAUTH_SECRET || 'dev-only-not-secret-change-me',
+  // Auth.js v5 refuses requests when the request Host doesn't match a known
+  // trusted source unless we opt in. We run behind App Service / localhost in
+  // dev / 0.0.0.0 in the Docker smoke test — all legitimate hosts but none
+  // match the strict default. Set via env so deployments stay opt-in; default
+  // true here keeps middleware happy in CI and Azure both.
+  trustHost: process.env.AUTH_TRUST_HOST !== '0',
   session: { strategy: 'jwt' },
   pages: { signIn: '/signin' },
 };
