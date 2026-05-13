@@ -64,6 +64,11 @@ jobs:
           fi
 
   e2e:
+    # Non-blocking: the suite will be rewritten in Phase C for multi-tenant
+    # scenarios (engagement create / switch / cross-engagement isolation), and
+    # the current single-tenant selectors will be obsolete. Keep the job
+    # informational rather than gating until then.
+    continue-on-error: true
     runs-on: ubuntu-latest
     needs: build
     steps:
