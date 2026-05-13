@@ -79,12 +79,19 @@ export default function PBCView() {
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const [openId, setOpenId] = React.useState<number | null>(initialId);
   const [cursor, setCursor] = React.useState<number | null>(null);
+  const [role, setRole] = React.useState<'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer'>('auditor_lead');
   const { savedKey, flash } = useSaveIndicator();
   const undoStack = React.useRef<UndoOp[]>([]);
   const redoStack = React.useRef<UndoOp[]>([]);
   const { entity } = useEntityFilter();
 
-  React.useEffect(() => { load(); loadSavedViews(); }, []);
+  React.useEffect(() => {
+    load();
+    loadSavedViews();
+    fetch('/api/me').then(r => r.ok ? r.json() : null).then(d => {
+      if (d?.user?.currentRole) setRole(d.user.currentRole);
+    }).catch(() => {});
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -451,7 +458,44 @@ export default function PBCView() {
               </tr>
             ))}
             {!loading && filtered.length === 0 && (
-              <tr><td colSpan={11} className="text-center py-12 text-ink-500 text-[13px]">No items match the current filters.</td></tr>
+              <tr><td colSpan={11} className="text-center py-12 text-[13px]">
+                {items.length === 0 ? (
+                  <div className="max-w-md mx-auto">
+                    <div className="text-ink-700 dark:text-slate-300 font-medium">No PBC items yet</div>
+                    {role === 'auditor_lead' ? (
+                      <p className="text-[12px] text-ink-500 mt-1 leading-relaxed">
+                        Either pick a template when you next create an audit (
+                        <a href="/engagements/new" className="text-navy-700 dark:text-navy-300 underline">new audit</a>
+                        ), or upload your standard Excel here:{' '}
+                        <a href="/settings" className="text-navy-700 dark:text-navy-300 underline">Settings → Re-sync from Excel</a>.
+                      </p>
+                    ) : (role === 'auditor') ? (
+                      <p className="text-[12px] text-ink-500 mt-1 leading-relaxed">
+                        Ask the audit lead to import the PBC list from Excel via Settings.
+                      </p>
+                    ) : (
+                      <p className="text-[12px] text-ink-500 mt-1 leading-relaxed">
+                        The auditor is still setting things up. Items you&apos;ll need to provide will appear here.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-ink-500">
+                    No items match the current filters.{' '}
+                    <button
+                      onClick={() => {
+                        setSearch(''); setFilterCats([]); setFilterPrios([]); setFilterStatuses([]);
+                        setFilterOwners([]); setFilterTSC([]);
+                        setReqFrom(''); setReqTo(''); setRecFrom(''); setRecTo('');
+                        setNotesMode('any'); setView('all');
+                      }}
+                      className="underline text-navy-700 dark:text-navy-300"
+                    >
+                      Clear filters
+                    </button>
+                  </div>
+                )}
+              </td></tr>
             )}
             {!loading && filtered.map(item => {
               const overdue = isOverdue(item);
@@ -525,6 +569,7 @@ export default function PBCView() {
       {openItem && (
         <PBCDetailPanel
           item={openItem}
+          role={role}
           onClose={() => { setOpenId(null); router.replace('/pbc'); }}
           onPatch={(patch) => patchItem(openItem.id, patch)}
         />

@@ -25,3 +25,15 @@ export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHead
 export function CardBody({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn('px-6 pb-6', className)} {...props} />;
 }
+
+export function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        'px-6 py-3 border-t border-rule dark:border-navy-700 bg-canvas/50 dark:bg-navy-950/40 flex items-center gap-3 rounded-b-lg',
+        className
+      )}
+      {...props}
+    />
+  );
+}
