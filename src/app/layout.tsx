@@ -4,6 +4,8 @@ import Shell from '@/components/shell/Shell';
 import ClientSessionProvider from '@/components/shell/SessionProvider';
 import { getSettings } from '@/lib/repository/settings';
 import { ensureSchema } from '@/lib/bootstrap';
+import { getActor } from '@/lib/rbac';
+import type { EngagementSettings } from '@/types';
 
 export const metadata: Metadata = {
   title: 'IT Audit — PBC Tracker',
@@ -12,9 +14,28 @@ export const metadata: Metadata = {
 
 export const dynamic = 'force-dynamic';
 
+const PLACEHOLDER_SETTINGS: EngagementSettings = {
+  clientName: 'Audit Tracker',
+  auditPeriod: '',
+  leadAuditor: '',
+  sponsor: '',
+  projectTitle: 'IT Audit — PBC Tracker',
+};
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   await ensureSchema();
-  const settings = await getSettings();
+  // Settings are per-engagement now. When the actor has no selected engagement
+  // (sign-in page, /engagements list, /engagements/new), fall back to a
+  // generic header.
+  let settings = PLACEHOLDER_SETTINGS;
+  try {
+    const actor = await getActor();
+    if (actor?.engagement) {
+      settings = await getSettings(actor.engagement.id);
+    }
+  } catch {
+    // ensureSchema may have failed; render a bare shell anyway so /signin still works.
+  }
   return (
     <html lang="en" suppressHydrationWarning>
       <head>

@@ -8,5 +8,5 @@ export async function GET(req: NextRequest) {
   const actor = await requireRole('auditor');
   if (isErrorResponse(actor)) return actor;
   const limit = parseInt(req.nextUrl.searchParams.get('limit') || '500', 10);
-  return NextResponse.json(await engagementTimeline(limit));
+  return NextResponse.json(await engagementTimeline(actor.engagement!.id, limit));
 }

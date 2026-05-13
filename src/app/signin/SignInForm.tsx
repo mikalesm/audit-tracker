@@ -36,12 +36,23 @@ export default function SignInForm({ authEnabled, devBypass }: { authEnabled: bo
         className="space-y-3"
       >
         <div>
-          <div className="text-[10.5px] uppercase tracking-wider font-semibold text-ink-500 mb-1.5">Email</div>
-          <Input value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" />
+          <label htmlFor="dev-bypass-email" className="block text-[10.5px] uppercase tracking-wider font-semibold text-ink-500 mb-1.5">Email</label>
+          <Input
+            id="dev-bypass-email"
+            aria-label="Email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            autoComplete="email"
+          />
         </div>
         <div>
-          <div className="text-[10.5px] uppercase tracking-wider font-semibold text-ink-500 mb-1.5">Display name</div>
-          <Input value={name} onChange={e => setName(e.target.value)} />
+          <label htmlFor="dev-bypass-name" className="block text-[10.5px] uppercase tracking-wider font-semibold text-ink-500 mb-1.5">Display name</label>
+          <Input
+            id="dev-bypass-name"
+            aria-label="Display name"
+            value={name}
+            onChange={e => setName(e.target.value)}
+          />
         </div>
         <Button variant="primary" size="lg" className="w-full" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in (dev bypass)'}

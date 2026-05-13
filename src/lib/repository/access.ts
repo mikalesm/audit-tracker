@@ -3,7 +3,7 @@ import type { AccessRequest } from '@/types';
 import { logActivity } from './activity';
 
 type Row = {
-  id: number; num: number; system: string; access_type: string; role_permissions: string;
+  id: number; engagement_id: number; num: number; system: string; access_type: string; role_permissions: string;
   recommended_method: string; justification: string; owner_client: string | null;
   status: string; provisioned_date: string | Date | null; notes: string | null;
   updated_at: string | Date;
@@ -27,9 +27,12 @@ function toItem(r: Row): AccessRequest {
   };
 }
 
-export async function listAccess(): Promise<AccessRequest[]> {
+export async function listAccess(engagementId: number): Promise<AccessRequest[]> {
   const db = await getDb();
-  const r = await db.query<Row>('SELECT * FROM access_requests ORDER BY num');
+  const r = await db.query<Row>(
+    'SELECT * FROM access_requests WHERE engagement_id = $1 ORDER BY num',
+    [engagementId]
+  );
   return r.rows.map(toItem);
 }
 
@@ -40,9 +43,17 @@ const COLS: Record<string, string> = {
 };
 const DATE_COLS = new Set(['provisioned_date']);
 
-export async function updateAccess(id: number, patch: Record<string, unknown>, userId: number | null = null): Promise<AccessRequest> {
+export async function updateAccess(
+  engagementId: number,
+  id: number,
+  patch: Record<string, unknown>,
+  userId: number | null = null,
+): Promise<AccessRequest> {
   const db = await getDb();
-  const existing = (await db.query<Row>('SELECT * FROM access_requests WHERE id = $1', [id])).rows[0];
+  const existing = (await db.query<Row>(
+    'SELECT * FROM access_requests WHERE engagement_id = $1 AND id = $2',
+    [engagementId, id]
+  )).rows[0];
   if (!existing) throw new Error('not found');
 
   await db.withTx(async (tx) => {
@@ -57,13 +68,16 @@ export async function updateAccess(id: number, patch: Record<string, unknown>, u
       if (oldStr === newVal) continue;
       const cast = DATE_COLS.has(col) ? '::date' : '';
       await tx.query(
-        `UPDATE access_requests SET ${col} = $1${cast}, updated_at = NOW() WHERE id = $2`,
-        [newVal, id]
+        `UPDATE access_requests SET ${col} = $1${cast}, updated_at = NOW() WHERE engagement_id = $2 AND id = $3`,
+        [newVal, engagementId, id]
       );
-      await logActivity('access', id, k, oldStr, newVal, userId, tx);
+      await logActivity(engagementId, 'access', id, k, oldStr, newVal, userId, tx);
     }
   });
 
-  const fresh = (await db.query<Row>('SELECT * FROM access_requests WHERE id = $1', [id])).rows[0];
+  const fresh = (await db.query<Row>(
+    'SELECT * FROM access_requests WHERE engagement_id = $1 AND id = $2',
+    [engagementId, id]
+  )).rows[0];
   return toItem(fresh);
 }

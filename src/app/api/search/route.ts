@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { requireRole, isErrorResponse } from '@/lib/rbac';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const actor = await requireRole('client_reviewer');
+  if (isErrorResponse(actor)) return actor;
+  const eid = actor.engagement!.id;
   const q = req.nextUrl.searchParams.get('q')?.trim();
   if (!q) return NextResponse.json([]);
   const db = await getDb();
@@ -12,9 +16,9 @@ export async function GET(req: NextRequest) {
 
   const pbc = (await db.query<{ id: number; num: number; category: string; title: string; priority: string; status: string }>(
     `SELECT id, num, category, item_requested as title, priority, status FROM pbc_items
-     WHERE item_requested ILIKE $1 OR notes ILIKE $1 OR category ILIKE $1
+     WHERE engagement_id = $1 AND (item_requested ILIKE $2 OR notes ILIKE $2 OR category ILIKE $2)
      ORDER BY num LIMIT 12`,
-    [like]
+    [eid, like]
   )).rows;
   for (const r of pbc) {
     results.push({
@@ -27,8 +31,8 @@ export async function GET(req: NextRequest) {
 
   const walks = (await db.query<{ id: number; num: number; process_area: string; key_topics: string }>(
     `SELECT id, num, process_area, key_topics FROM walkthroughs
-     WHERE process_area ILIKE $1 OR key_topics ILIKE $1 LIMIT 6`,
-    [like]
+     WHERE engagement_id = $1 AND (process_area ILIKE $2 OR key_topics ILIKE $2) LIMIT 6`,
+    [eid, like]
   )).rows;
   for (const r of walks) {
     results.push({ type: 'walkthrough', id: Number(r.id), title: `#${r.num} · ${r.process_area}`, subtitle: r.key_topics?.slice(0, 100), href: '/walkthroughs' });
@@ -36,8 +40,8 @@ export async function GET(req: NextRequest) {
 
   const ents = (await db.query<{ id: number; num: number; legal_entity: string | null; country_location: string | null }>(
     `SELECT id, num, legal_entity, country_location FROM entities
-     WHERE legal_entity ILIKE $1 OR country_location ILIKE $1 LIMIT 6`,
-    [like]
+     WHERE engagement_id = $1 AND (legal_entity ILIKE $2 OR country_location ILIKE $2) LIMIT 6`,
+    [eid, like]
   )).rows;
   for (const r of ents) {
     if (!r.legal_entity) continue;
@@ -46,8 +50,8 @@ export async function GET(req: NextRequest) {
 
   const access = (await db.query<{ id: number; num: number; system: string; access_type: string }>(
     `SELECT id, num, system, access_type FROM access_requests
-     WHERE system ILIKE $1 OR access_type ILIKE $1 LIMIT 6`,
-    [like]
+     WHERE engagement_id = $1 AND (system ILIKE $2 OR access_type ILIKE $2) LIMIT 6`,
+    [eid, like]
   )).rows;
   for (const r of access) {
     results.push({ type: 'access', id: Number(r.id), title: `#${r.num} · ${r.system}`, subtitle: r.access_type, href: '/access' });

@@ -3,7 +3,7 @@ import type { SamplingItem } from '@/types';
 import { logActivity } from './activity';
 
 type Row = {
-  id: number; num: number; control_area: string; control_description: string;
+  id: number; engagement_id: number; num: number; control_area: string; control_description: string;
   population_source: string; population_size: number | null; sample_size: number | null;
   sampling_method: string; test_status: string; findings_summary: string | null;
   updated_at: string | Date;
@@ -22,9 +22,12 @@ function toItem(r: Row): SamplingItem {
   };
 }
 
-export async function listSampling(): Promise<SamplingItem[]> {
+export async function listSampling(engagementId: number): Promise<SamplingItem[]> {
   const db = await getDb();
-  const r = await db.query<Row>('SELECT * FROM sampling_items ORDER BY num');
+  const r = await db.query<Row>(
+    'SELECT * FROM sampling_items WHERE engagement_id = $1 ORDER BY num',
+    [engagementId]
+  );
   return r.rows.map(toItem);
 }
 
@@ -36,9 +39,17 @@ const COLS: Record<string, string> = {
 };
 const INT_COLS = new Set(['population_size', 'sample_size']);
 
-export async function updateSampling(id: number, patch: Record<string, unknown>, userId: number | null = null): Promise<SamplingItem> {
+export async function updateSampling(
+  engagementId: number,
+  id: number,
+  patch: Record<string, unknown>,
+  userId: number | null = null,
+): Promise<SamplingItem> {
   const db = await getDb();
-  const existing = (await db.query<Row>('SELECT * FROM sampling_items WHERE id = $1', [id])).rows[0];
+  const existing = (await db.query<Row>(
+    'SELECT * FROM sampling_items WHERE engagement_id = $1 AND id = $2',
+    [engagementId, id]
+  )).rows[0];
   if (!existing) throw new Error('not found');
 
   await db.withTx(async (tx) => {
@@ -55,13 +66,16 @@ export async function updateSampling(id: number, patch: Record<string, unknown>,
       if (oldStr === newStr) continue;
       const cast = INT_COLS.has(col) ? '::int' : '';
       await tx.query(
-        `UPDATE sampling_items SET ${col} = $1${cast}, updated_at = NOW() WHERE id = $2`,
-        [newVal, id]
+        `UPDATE sampling_items SET ${col} = $1${cast}, updated_at = NOW() WHERE engagement_id = $2 AND id = $3`,
+        [newVal, engagementId, id]
       );
-      await logActivity('sampling', id, k, oldStr, newStr, userId, tx);
+      await logActivity(engagementId, 'sampling', id, k, oldStr, newStr, userId, tx);
     }
   });
 
-  const fresh = (await db.query<Row>('SELECT * FROM sampling_items WHERE id = $1', [id])).rows[0];
+  const fresh = (await db.query<Row>(
+    'SELECT * FROM sampling_items WHERE engagement_id = $1 AND id = $2',
+    [engagementId, id]
+  )).rows[0];
   return toItem(fresh);
 }

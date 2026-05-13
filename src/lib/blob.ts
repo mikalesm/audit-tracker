@@ -52,19 +52,27 @@ export function blobService(): BlobServiceClient {
   return _service;
 }
 
-export function evidenceContainerName(): string {
-  return process.env.EVIDENCE_CONTAINER || 'evidence';
+/**
+ * Each engagement gets its own blob container. Azure storage account names can
+ * have hundreds of containers; we use `evidence-eng-<id>` so a future bug that
+ * accidentally writes to the wrong engagement's container is at least visible
+ * in the Azure portal and easy to grep for.
+ */
+export function containerNameFor(engagementId: number): string {
+  return `evidence-eng-${engagementId}`;
 }
 
-let _containerEnsured: Promise<ContainerClient> | null = null;
-export function evidenceContainer(): Promise<ContainerClient> {
-  if (_containerEnsured) return _containerEnsured;
-  _containerEnsured = (async () => {
-    const c = blobService().getContainerClient(evidenceContainerName());
+const _ensuredContainers = new Map<number, Promise<ContainerClient>>();
+export function evidenceContainerFor(engagementId: number): Promise<ContainerClient> {
+  const cached = _ensuredContainers.get(engagementId);
+  if (cached) return cached;
+  const p = (async () => {
+    const c = blobService().getContainerClient(containerNameFor(engagementId));
     await c.createIfNotExists();
     return c;
   })();
-  return _containerEnsured;
+  _ensuredContainers.set(engagementId, p);
+  return p;
 }
 
 /**
@@ -73,9 +81,13 @@ export function evidenceContainer(): Promise<ContainerClient> {
  * - With an account key (Azurite, or an explicit connection string): use shared key.
  * - With Managed Identity (Azure prod): use a user-delegation key.
  */
-export async function downloadSasUrl(blobName: string, ttlSeconds = 30): Promise<string> {
+export async function downloadSasUrl(
+  engagementId: number,
+  blobName: string,
+  ttlSeconds = 30,
+): Promise<string> {
   const service = blobService();
-  const containerName = evidenceContainerName();
+  const containerName = containerNameFor(engagementId);
   const blobClient = service.getContainerClient(containerName).getBlobClient(blobName);
   const expiresOn = new Date(Date.now() + ttlSeconds * 1000);
   const startsOn = new Date(Date.now() - 60 * 1000);
@@ -88,7 +100,6 @@ export async function downloadSasUrl(blobName: string, ttlSeconds = 30): Promise
       permissions: BlobSASPermissions.parse('r'),
       startsOn,
       expiresOn,
-      protocol: _isAzurite ? undefined : undefined,
     }, cred).toString();
     return `${blobClient.url}?${sas}`;
   }
