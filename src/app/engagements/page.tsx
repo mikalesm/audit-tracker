@@ -34,12 +34,20 @@ export default async function EngagementsPage() {
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-[20px] font-semibold tracking-tight">Your engagements</h1>
             {isPlatformAdmin && (
-              <Link
-                href="/engagements/new"
-                className="px-3 h-8 inline-flex items-center rounded bg-navy-700 text-white text-[13px] hover:bg-navy-800"
-              >
-                + New audit
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/admin"
+                  className="px-3 h-8 inline-flex items-center rounded border border-rule dark:border-navy-700 text-[13px] hover:bg-canvas dark:hover:bg-navy-800"
+                >
+                  Platform admin
+                </Link>
+                <Link
+                  href="/engagements/new"
+                  className="px-3 h-8 inline-flex items-center rounded bg-navy-700 text-white text-[13px] hover:bg-navy-800"
+                >
+                  + New audit
+                </Link>
+              </div>
             )}
           </div>
 

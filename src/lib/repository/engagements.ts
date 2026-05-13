@@ -61,6 +61,32 @@ export async function listEngagements(): Promise<Engagement[]> {
   return r.rows.map(toEngagement);
 }
 
+/** Listing for platform admin pages: every engagement, with member count. */
+export async function listAllEngagementsWithCounts(): Promise<Array<Engagement & { memberCount: number; itemCount: number }>> {
+  const db = await getDb();
+  const r = await db.query<EngagementRow & { member_count: string | number; item_count: string | number }>(
+    `SELECT e.*,
+            (SELECT COUNT(*) FROM engagement_memberships m WHERE m.engagement_id = e.id) AS member_count,
+            (SELECT COUNT(*) FROM pbc_items p WHERE p.engagement_id = e.id) AS item_count
+       FROM engagements e
+      ORDER BY e.status, e.created_at DESC`
+  );
+  return r.rows.map((row) => ({
+    ...toEngagement(row),
+    memberCount: Number(row.member_count),
+    itemCount: Number(row.item_count),
+  }));
+}
+
+export async function setEngagementStatus(slug: string, status: EngagementStatus): Promise<Engagement | null> {
+  const db = await getDb();
+  const r = await db.query<EngagementRow>(
+    `UPDATE engagements SET status = $2 WHERE slug = $1 RETURNING *`,
+    [slug, status]
+  );
+  return r.rows[0] ? toEngagement(r.rows[0]) : null;
+}
+
 export async function getEngagementBySlug(slug: string): Promise<Engagement | null> {
   const db = await getDb();
   const r = await db.query<EngagementRow>(

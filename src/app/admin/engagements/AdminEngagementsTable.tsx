@@ -1,0 +1,146 @@
+'use client';
+import * as React from 'react';
+import { useRouter } from 'next/navigation';
+
+interface Row {
+  id: number; slug: string; name: string; clientName: string; fiscalYear: string | null;
+  status: 'active' | 'closed' | 'archived';
+  memberCount: number; itemCount: number;
+  isMember: boolean;
+  createdAt: string;
+}
+
+export default function AdminEngagementsTable({ initial }: { initial: Row[] }) {
+  const router = useRouter();
+  const [rows, setRows] = React.useState<Row[]>(initial);
+  const [busyId, setBusyId] = React.useState<number | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function refresh() {
+    const r = await fetch('/api/admin/engagements');
+    if (r.ok) {
+      const fresh = (await r.json()) as Omit<Row, 'isMember'>[];
+      // Preserve isMember from current state since the admin route doesn't tell us.
+      setRows(fresh.map(f => ({ ...f, isMember: rows.find(r => r.id === f.id)?.isMember ?? false })));
+    }
+  }
+
+  async function patch(slug: string, body: Record<string, unknown>, id: number) {
+    setError(null);
+    setBusyId(id);
+    try {
+      const r = await fetch(`/api/admin/engagements/${slug}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json();
+      if (!r.ok) { setError(data.error || 'Failed'); return null; }
+      return data;
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function setStatus(row: Row, status: Row['status']) {
+    const data = await patch(row.slug, { status }, row.id);
+    if (data) await refresh();
+  }
+
+  async function joinAsLead(row: Row) {
+    const data = await patch(row.slug, { joinAs: 'auditor_lead' }, row.id);
+    if (data) {
+      setRows(rs => rs.map(r => r.id === row.id ? { ...r, isMember: true } : r));
+    }
+  }
+
+  async function openEngagement(row: Row) {
+    setBusyId(row.id);
+    try {
+      const r = await fetch(`/api/engagements/${row.slug}/switch`, { method: 'POST' });
+      if (r.ok) router.push('/');
+      else { const b = await r.json(); setError(b.error || 'Failed to switch'); }
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <>
+      {error && (
+        <div className="text-[12.5px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-900 rounded p-2 mb-3">
+          {error}
+        </div>
+      )}
+      <div className="bg-white dark:bg-navy-900 border border-rule dark:border-navy-700 rounded-lg overflow-hidden">
+        <table className="w-full text-[12.5px]">
+          <thead className="bg-canvas dark:bg-navy-950 text-[10.5px] uppercase tracking-wider text-ink-500 dark:text-slate-400">
+            <tr>
+              <th className="px-4 py-2 text-left font-semibold">Engagement</th>
+              <th className="px-4 py-2 text-left font-semibold">Client</th>
+              <th className="px-4 py-2 text-left font-semibold">Status</th>
+              <th className="px-4 py-2 text-right font-semibold">Members</th>
+              <th className="px-4 py-2 text-right font-semibold">PBC items</th>
+              <th className="px-4 py-2 text-left font-semibold">Created</th>
+              <th className="px-4 py-2 w-0"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(row => (
+              <tr key={row.id} className="border-t border-rule dark:border-navy-800">
+                <td className="px-4 py-2.5">
+                  <div className="font-medium">{row.name}</div>
+                  <div className="text-[10.5px] text-ink-500 dark:text-slate-400 font-mono">{row.slug}</div>
+                </td>
+                <td className="px-4 py-2.5">
+                  {row.clientName}
+                  {row.fiscalYear && <span className="text-ink-500 dark:text-slate-400"> · {row.fiscalYear}</span>}
+                </td>
+                <td className="px-4 py-2.5">
+                  <select
+                    value={row.status}
+                    onChange={(e) => setStatus(row, e.target.value as Row['status'])}
+                    disabled={busyId === row.id}
+                    className="h-7 px-2 border border-rule dark:border-navy-700 rounded text-[12px] bg-canvas dark:bg-navy-950"
+                  >
+                    <option value="active">active</option>
+                    <option value="closed">closed</option>
+                    <option value="archived">archived</option>
+                  </select>
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{row.memberCount}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{row.itemCount}</td>
+                <td className="px-4 py-2.5 text-ink-500 dark:text-slate-400">
+                  {new Date(row.createdAt).toLocaleDateString()}
+                </td>
+                <td className="px-4 py-2.5 text-right whitespace-nowrap">
+                  {row.isMember ? (
+                    <button
+                      onClick={() => openEngagement(row)}
+                      disabled={busyId === row.id}
+                      className="px-2.5 h-7 inline-flex items-center rounded border border-navy-700 text-navy-700 text-[11.5px] font-medium hover:bg-navy-50 dark:border-navy-300 dark:text-navy-200 dark:hover:bg-navy-800 disabled:opacity-50"
+                    >
+                      Open
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => joinAsLead(row)}
+                      disabled={busyId === row.id}
+                      className="px-2.5 h-7 inline-flex items-center rounded border border-rule dark:border-navy-700 text-[11.5px] hover:bg-canvas dark:hover:bg-navy-800 disabled:opacity-50"
+                      title="Add yourself as auditor_lead to this engagement"
+                    >
+                      Join as lead
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-6 text-center text-ink-500 dark:text-slate-400">No engagements yet. Click <strong>+ New audit</strong> to start.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
