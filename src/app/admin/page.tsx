@@ -11,10 +11,12 @@ export default async function AdminHome() {
   if (!actor) redirect('/signin?callbackUrl=/admin');
   if (actor.systemRole !== 'platform_admin') redirect('/engagements');
 
-  const [engagements, users] = await Promise.all([
-    listAllEngagementsWithCounts(),
+  const [allEngagements, users] = await Promise.all([
+    listAllEngagementsWithCounts({ kind: 'all' }),
     listUsers(),
   ]);
+  const engagements = allEngagements.filter(e => !e.isTemplate);
+  const templates = allEngagements.filter(e => e.isTemplate);
   const activeCount = engagements.filter(e => e.status === 'active').length;
   const closedCount = engagements.filter(e => e.status === 'closed').length;
   const archivedCount = engagements.filter(e => e.status === 'archived').length;
@@ -34,6 +36,7 @@ export default async function AdminHome() {
           <nav className="flex items-center gap-1 ml-6">
             <AdminTab href="/admin" label="Overview" active />
             <AdminTab href="/admin/engagements" label="Engagements" />
+            <AdminTab href="/admin/templates" label="Templates" />
             <AdminTab href="/admin/users" label="Users" />
           </nav>
           <div className="ml-auto text-[12px] text-ink-500 dark:text-slate-400">{actor.email}</div>
@@ -45,30 +48,55 @@ export default async function AdminHome() {
           <h1 className="text-[20px] font-semibold tracking-tight mb-6">Platform overview</h1>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <Stat label="Active engagements"   value={activeCount} hint="Audits in progress" />
+            <Stat label="Active engagements"   value={activeCount} hint="Client audits in progress" />
             <Stat label="Closed engagements"   value={closedCount} hint="Finished, kept for retention" />
             <Stat label="Archived engagements" value={archivedCount} hint="Read-only history" />
+            <Stat label="Templates"            value={templates.length} hint="Reusable PBC lists for new audits" />
             <Stat label="Total users"          value={users.length} hint={`${activeUserCount} active`} />
             <Stat label="Platform admins"      value={platformAdminCount} hint="Can create engagements + manage users" />
-            <Stat label="This platform"        value={null}
-              valueText={engagements.length === 0 ? 'Brand new' : `${engagements.reduce((a, e) => a + e.itemCount, 0)} PBC items across all audits`} />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <NavCard
               href="/admin/engagements"
               title="Engagements"
-              body="Browse every audit on the platform. Change status (active → closed → archived). Add yourself as auditor_lead to one without leaving the admin pages."
+              body="Every client audit. Change status (active → closed → archived). Add yourself as auditor_lead to one without leaving the admin pages."
+            />
+            <NavCard
+              href="/admin/templates"
+              title="Templates"
+              body="The standard PBC list. Edit a template (open it like a normal engagement) and Re-sync from Excel. New audits pick a template to start pre-populated."
             />
             <NavCard
               href="/admin/users"
               title="Users"
-              body="Grant or revoke platform_admin. Deactivate a user across all engagements at once. (Per-engagement roles are managed inside each engagement's Members page.)"
+              body="Grant or revoke platform_admin. Deactivate a user across all engagements at once. (Per-engagement roles live on each engagement's Members page.)"
             />
           </div>
 
-          <p className="text-[11.5px] text-ink-500 dark:text-slate-400 mt-8">
-            Isolation guarantees: each engagement&apos;s data lives behind an explicit membership check on every API request. Even platform_admin must be added as a member to view an engagement&apos;s PBC items, evidence, or settings.
+          <div className="bg-white dark:bg-navy-900 border border-rule dark:border-navy-700 rounded-lg p-5 mt-6">
+            <div className="text-[12.5px] font-semibold tracking-tight mb-2">Storage isolation</div>
+            <p className="text-[11.5px] text-ink-500 dark:text-slate-400 leading-relaxed mb-3">
+              Each engagement has its own dedicated Azure Blob container named
+              {' '}<code className="text-[11px]">evidence-eng-&lt;id&gt;</code>. The container name is derived from the engagement&apos;s database id and is immutable; the application code path cannot mix evidence across containers. See <code className="text-[11px]">docs/ISOLATION.md</code> for the full contract.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-y-1 gap-x-3">
+              {allEngagements.slice(0, 12).map(e => (
+                <div key={e.id} className="flex items-center justify-between text-[11.5px] font-mono">
+                  <span className="truncate">evidence-eng-{e.id}</span>
+                  <span className="text-ink-500 dark:text-slate-400 ml-3 truncate">→ {e.slug}{e.isTemplate ? ' (template)' : ''}</span>
+                </div>
+              ))}
+              {allEngagements.length > 12 && (
+                <div className="text-[11px] text-ink-500 dark:text-slate-400 col-span-2">
+                  …and {allEngagements.length - 12} more. Full list on the Engagements / Templates tabs.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <p className="text-[11.5px] text-ink-500 dark:text-slate-400 mt-6">
+            Membership isolation: every API request re-validates membership against engagement_memberships. Cookies alone never grant access. Even platform_admin must be a member to view an engagement&apos;s data.
           </p>
         </div>
       </main>

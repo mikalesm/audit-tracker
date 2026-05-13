@@ -26,7 +26,11 @@ export async function POST(req: NextRequest) {
   const actor = await requirePlatformAdmin();
   if (isErrorResponse(actor)) return actor;
 
-  let body: { slug?: string; name?: string; clientName?: string; fiscalYear?: string; description?: string };
+  let body: {
+    slug?: string; name?: string; clientName?: string;
+    fiscalYear?: string; description?: string;
+    isTemplate?: boolean; fromTemplateSlug?: string;
+  };
   try {
     body = await req.json();
   } catch {
@@ -38,6 +42,7 @@ export async function POST(req: NextRequest) {
   const clientName = String(body.clientName || '').trim();
   const fiscalYear = body.fiscalYear ? String(body.fiscalYear).trim() : null;
   const description = body.description ? String(body.description).trim() : null;
+  const isTemplate = body.isTemplate === true;
 
   if (!slug || !isValidSlug(slug)) {
     return NextResponse.json({ error: 'invalid slug — lowercase, alphanumeric and dashes, 3-32 chars' }, { status: 400 });
@@ -52,13 +57,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `engagement '${slug}' already exists` }, { status: 409 });
   }
 
+  // Resolve template if provided. Templates seed the new engagement with the
+  // standard PBC/access/walkthroughs/entities/sampling rows (per-client fields
+  // reset to defaults).
+  let fromTemplateId: number | null = null;
+  if (body.fromTemplateSlug) {
+    const t = await getEngagementBySlug(String(body.fromTemplateSlug));
+    if (!t || !t.isTemplate) {
+      return NextResponse.json({ error: `template '${body.fromTemplateSlug}' not found` }, { status: 400 });
+    }
+    fromTemplateId = t.id;
+  }
+
   const eng = await createEngagement({
     slug, name, clientName, fiscalYear, description,
+    isTemplate, fromTemplateId,
     createdById: actor.userId,
   });
 
   // Pre-create the per-engagement blob container so the first evidence upload
   // doesn't fail. Non-fatal on error — Azurite can be flaky during dev.
+  // Templates also get their own container; useful if the user wants to upload
+  // an example evidence to the template.
   try {
     await evidenceContainerFor(eng.id);
   } catch (e) {

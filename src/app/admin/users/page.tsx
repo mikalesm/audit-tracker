@@ -26,6 +26,7 @@ export default async function AdminUsersPage() {
           <nav className="flex items-center gap-1 ml-6">
             <AdminTab href="/admin" label="Overview" />
             <AdminTab href="/admin/engagements" label="Engagements" />
+            <AdminTab href="/admin/templates" label="Templates" />
             <AdminTab href="/admin/users" label="Users" active />
           </nav>
           <div className="ml-auto text-[12px] text-ink-500 dark:text-slate-400">{actor.email}</div>

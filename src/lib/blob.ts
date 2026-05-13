@@ -57,8 +57,16 @@ export function blobService(): BlobServiceClient {
  * have hundreds of containers; we use `evidence-eng-<id>` so a future bug that
  * accidentally writes to the wrong engagement's container is at least visible
  * in the Azure portal and easy to grep for.
+ *
+ * Defensive guard: engagementId MUST be a positive integer derived from the DB
+ * (BIGSERIAL). This rejects bogus inputs (0, negative, non-finite) that could
+ * otherwise normalise to a container that another engagement might write to.
+ * Container names are immutable for the lifetime of the engagement.
  */
 export function containerNameFor(engagementId: number): string {
+  if (!Number.isInteger(engagementId) || engagementId <= 0) {
+    throw new Error(`refusing to build container name for invalid engagementId: ${engagementId}`);
+  }
   return `evidence-eng-${engagementId}`;
 }
 

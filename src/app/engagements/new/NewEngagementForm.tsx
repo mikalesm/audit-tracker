@@ -6,6 +6,8 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
 }
 
+interface Template { id: number; slug: string; name: string }
+
 export default function NewEngagementForm() {
   const router = useRouter();
   const [name, setName] = React.useState('');
@@ -14,6 +16,8 @@ export default function NewEngagementForm() {
   const [slugEdited, setSlugEdited] = React.useState(false);
   const [fiscalYear, setFiscalYear] = React.useState('FY' + (new Date().getFullYear() + 1).toString().slice(2));
   const [description, setDescription] = React.useState('');
+  const [templates, setTemplates] = React.useState<Template[]>([]);
+  const [fromTemplateSlug, setFromTemplateSlug] = React.useState<string>('');
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -21,6 +25,16 @@ export default function NewEngagementForm() {
   React.useEffect(() => {
     if (!slugEdited) setSlug(slugify(clientName));
   }, [clientName, slugEdited]);
+
+  // Load templates so the user can pick one as a seed.
+  React.useEffect(() => {
+    fetch('/api/admin/templates').then(async (r) => {
+      if (!r.ok) return; // 403 if not a platform_admin (shouldn't happen on this page)
+      const data = (await r.json()) as Template[];
+      setTemplates(data);
+      if (data.length === 1) setFromTemplateSlug(data[0].slug);
+    }).catch(() => {});
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -30,7 +44,10 @@ export default function NewEngagementForm() {
       const r = await fetch('/api/engagements', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ slug, name, clientName, fiscalYear, description }),
+        body: JSON.stringify({
+          slug, name, clientName, fiscalYear, description,
+          fromTemplateSlug: fromTemplateSlug || undefined,
+        }),
       });
       const body = await r.json();
       if (!r.ok) {
@@ -100,6 +117,25 @@ export default function NewEngagementForm() {
           rows={3}
           className="w-full px-3 py-2 border border-rule dark:border-navy-700 rounded text-[13px] bg-canvas dark:bg-navy-950"
         />
+      </Field>
+
+      <Field
+        label="Use template"
+        hint={templates.length === 0
+          ? 'No templates yet. Create one in /admin/templates to pre-populate new audits with your standard PBC list.'
+          : 'Pre-populates the new engagement with the template\'s PBC list, walkthroughs, sampling controls, and entities. Per-client fields (status, dates, owner, notes, findings) are reset.'}
+      >
+        <select
+          value={fromTemplateSlug}
+          onChange={(e) => setFromTemplateSlug(e.target.value)}
+          disabled={templates.length === 0}
+          className="w-full h-9 px-2 border border-rule dark:border-navy-700 rounded text-[13px] bg-canvas dark:bg-navy-950 disabled:opacity-60"
+        >
+          <option value="">— Start from empty engagement —</option>
+          {templates.map(t => (
+            <option key={t.id} value={t.slug}>{t.name}</option>
+          ))}
+        </select>
       </Field>
 
       {error && (
