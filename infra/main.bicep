@@ -66,6 +66,9 @@ param nextAuthSecret string
 @description('Engagement display name shown in the app.')
 param engagementName string = 'IT Audit Engagement'
 
+@description('Comma-separated emails who are auto-promoted to auditor_lead on first sign-in. Anyone NOT in this list (including B2B guests) defaults to client_reviewer.')
+param auditorLeadBootstrapEmails string = ''
+
 // ---- Resource Group ----
 resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: 'rg-audit-${clientSlug}-${env}'
@@ -92,6 +95,7 @@ module workload 'workload.bicep' = {
     nextAuthUrl: nextAuthUrl
     nextAuthSecret: nextAuthSecret
     engagementName: engagementName
+    auditorLeadBootstrapEmails: auditorLeadBootstrapEmails
   }
 }
 

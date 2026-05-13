@@ -32,15 +32,18 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Migrations are read at runtime from src/lib/migrations/*.sql
 COPY --from=builder --chown=nextjs:nodejs /app/src/lib/migrations ./src/lib/migrations
-# Migrate CLI for one-shot schema apply (handy from `az webapp ssh`)
+# Entrypoint + startup migration runner + the legacy tsx-based CLI for shells.
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/tsx ./node_modules/tsx
 COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
+RUN chmod +x ./scripts/entrypoint.sh \
+ && mkdir -p /app/data/pgdata \
+ && chown -R nextjs:nodejs /app/data
 
 USER nextjs
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD wget -qO- http://127.0.0.1:3000/api/healthz | grep -q '"ok":true' || exit 1
 
-CMD ["node", "server.js"]
+CMD ["./scripts/entrypoint.sh"]

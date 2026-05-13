@@ -10,3 +10,6 @@ data
 .DS_Store
 README.md
 infra
+e2e
+playwright.config.ts
+DEPLOY-NEXT-STEPS.md

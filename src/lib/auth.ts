@@ -3,6 +3,18 @@ import Credentials from 'next-auth/providers/credentials';
 import authConfig from './auth.config';
 import { upsertUserOnSignIn, getUserByEntraId, type Role } from '@/lib/repository/users';
 
+// B2B guests have UPNs like  `alice_contoso.com#EXT#@auditor.onmicrosoft.com`.
+// Recover the home-tenant email for display; non-guest UPNs pass through.
+function normalizeGuestEmail(raw: string): string {
+  if (!raw) return '';
+  const idx = raw.indexOf('#EXT#');
+  if (idx === -1) return raw;
+  const localPart = raw.slice(0, idx); // alice_contoso.com
+  const at = localPart.lastIndexOf('_');
+  if (at === -1) return raw;
+  return `${localPart.slice(0, at)}@${localPart.slice(at + 1)}`;
+}
+
 declare module 'next-auth' {
   interface Session {
     user: {
@@ -57,10 +69,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async signIn({ user, account, profile }) {
       if (account?.provider === 'microsoft-entra-id' && profile?.oid) {
         const oid = String(profile.oid);
-        const email = String(profile.email || user.email || '');
-        const name = String(profile.name || user.name || email);
-        if (!email) return false;
-        const u = await upsertUserOnSignIn(oid, email, name);
+        const p = profile as Record<string, unknown>;
+        const pick = (...candidates: unknown[]) => {
+          for (const c of candidates) if (typeof c === 'string' && c) return c;
+          return '';
+        };
+        const rawUpn = pick(p.preferred_username, p.upn, p.email, user.email);
+        const email = normalizeGuestEmail(rawUpn);
+        const name = pick(p.name, user.name, email, rawUpn) || oid;
+        const u = await upsertUserOnSignIn(oid, email, name, rawUpn || null);
         if (!u.isActive) return false;
         (user as unknown as { oid: string }).oid = oid;
       }

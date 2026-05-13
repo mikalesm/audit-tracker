@@ -1,7 +1,24 @@
-import { Pool } from 'pg';
+import { Pool, type PoolConfig } from 'pg';
 import { PGlite } from '@electric-sql/pglite';
 import path from 'path';
 import fs from 'fs';
+
+export type DbEngine = 'pglite' | 'postgres';
+let activeEngine: DbEngine = 'pglite';
+export function getDbEngine(): DbEngine { return activeEngine; }
+
+const OSS_RDBMS_SCOPE = 'https://ossrdbms-aad.database.windows.net/.default';
+let cachedToken: { token: string; expiresOnMs: number } | null = null;
+
+async function fetchPgAadToken(): Promise<string> {
+  if (cachedToken && cachedToken.expiresOnMs - Date.now() > 5 * 60_000) return cachedToken.token;
+  const { DefaultAzureCredential } = await import('@azure/identity');
+  const cred = new DefaultAzureCredential();
+  const t = await cred.getToken(OSS_RDBMS_SCOPE);
+  if (!t) throw new Error('Failed to acquire AAD token for Postgres (oss-rdbms scope)');
+  cachedToken = { token: t.token, expiresOnMs: t.expiresOnTimestamp };
+  return t.token;
+}
 
 export interface QueryResult<R = Record<string, unknown>> {
   rows: R[];
@@ -91,18 +108,49 @@ export function getDb(): Promise<DbAdapter> {
 
 async function openDb(): Promise<DbAdapter> {
   const url = process.env.DATABASE_URL;
-  if (!url || url.startsWith('pglite:') || url === 'pglite') {
-    const dataDir = url && url.startsWith('pglite:') && url.length > 'pglite:'.length
-      ? url.slice('pglite:'.length)
-      : path.join(process.cwd(), 'data', 'pgdata');
-    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-    const pg = new PGlite(dataDir);
-    await pg.waitReady;
-    return new PgliteAdapter(pg);
+  const hasAadConfig = !!(process.env.PGHOST && process.env.PGUSER && process.env.PGDATABASE);
+  const useAad = hasAadConfig && (!url || url === 'aad');
+
+  if (useAad) {
+    // Azure path: pg.Pool with a dynamic password callback that mints a fresh
+    // AAD token. Tokens last ~24 h; the callback re-fetches when expired.
+    const config: PoolConfig = {
+      host: process.env.PGHOST,
+      port: Number(process.env.PGPORT || 5432),
+      user: process.env.PGUSER,
+      database: process.env.PGDATABASE,
+      ssl: { rejectUnauthorized: false },
+      password: fetchPgAadToken,
+      max: 10,
+    };
+    const pool = new Pool(config);
+    activeEngine = 'postgres';
+    return new PgPoolAdapter(pool);
   }
-  const ssl = process.env.PGSSLMODE === 'require' ? { rejectUnauthorized: false } : undefined;
-  const pool = new Pool({ connectionString: url, ssl });
-  return new PgPoolAdapter(pool);
+
+  if (url && (url.startsWith('postgres://') || url.startsWith('postgresql://'))) {
+    const ssl = process.env.PGSSLMODE === 'require' ? { rejectUnauthorized: false } : undefined;
+    const pool = new Pool({ connectionString: url, ssl });
+    activeEngine = 'postgres';
+    return new PgPoolAdapter(pool);
+  }
+
+  // Local dev fallback: embedded pglite. Refuse to use it in Azure App Service.
+  if (process.env.WEBSITE_SITE_NAME) {
+    throw new Error(
+      'Refusing to start with embedded pglite in Azure App Service. ' +
+      'Set PGHOST/PGUSER/PGDATABASE for AAD auth, or DATABASE_URL=postgres://… ' +
+      '(WEBSITE_SITE_NAME is set, indicating App Service runtime).'
+    );
+  }
+  const dataDir = url && url.startsWith('pglite:') && url.length > 'pglite:'.length
+    ? url.slice('pglite:'.length)
+    : path.join(process.cwd(), 'data', 'pgdata');
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  const pg = new PGlite(dataDir);
+  await pg.waitReady;
+  activeEngine = 'pglite';
+  return new PgliteAdapter(pg);
 }
 
 export async function closeDb(): Promise<void> {
