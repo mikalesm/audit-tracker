@@ -47,7 +47,7 @@ export default function SignInForm({ authEnabled, devBypass }: { authEnabled: bo
           {busy ? 'Signing in…' : 'Sign in (dev bypass)'}
         </Button>
         <p className="text-[11px] text-ink-500 text-center">
-          Local development only. The first user to sign in becomes the auditor lead.
+          Local development only. Sign in as <code>lead@example.test</code> to bootstrap an auditor lead.
         </p>
       </form>
     );

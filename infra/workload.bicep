@@ -19,6 +19,7 @@ param nextAuthUrl string
 @secure()
 param nextAuthSecret string
 param engagementName string
+param auditorLeadBootstrapEmails string = ''
 
 // Storage account names must be 3-24 chars, lowercase + digits only.
 // Hash 6 chars off the RG id so two engagements never collide.
@@ -197,17 +198,17 @@ resource app 'Microsoft.Web/sites@2024-04-01' = {
       appSettings: [
         { name: 'WEBSITES_PORT', value: '3000' }
         { name: 'WEBSITES_ENABLE_APP_SERVICE_STORAGE', value: 'false' }
+        { name: 'WEBSITES_CONTAINER_START_TIME_LIMIT', value: '600' }
         { name: 'NEXT_TELEMETRY_DISABLED', value: '1' }
         { name: 'NODE_ENV', value: 'production' }
-        // Postgres — Entra-auth via Managed Identity (no password)
+        // Postgres — Entra-auth via Managed Identity. The container entrypoint
+        // mints a fresh AAD token (oss-rdbms scope) and the pg.Pool refreshes
+        // it on each new connection. No password is ever stored.
         { name: 'PGHOST', value: pg.properties.fullyQualifiedDomainName }
         { name: 'PGPORT', value: '5432' }
         { name: 'PGDATABASE', value: pgDb.name }
         { name: 'PGUSER', value: appName }
         { name: 'PGSSLMODE', value: 'require' }
-        // App reads DATABASE_URL — built at runtime by an entrypoint that fetches an
-        // AAD token and assembles `postgres://...?sslmode=require`. For first deploy
-        // (before Postgres role grant), set DATABASE_URL=pglite to start in standalone.
         // Storage
         { name: 'AZURE_STORAGE_ACCOUNT', value: storage.name }
         { name: 'EVIDENCE_CONTAINER', value: 'evidence' }
@@ -216,6 +217,10 @@ resource app 'Microsoft.Web/sites@2024-04-01' = {
         { name: 'NEXTAUTH_SECRET', value: '@Microsoft.KeyVault(SecretUri=${kvNextAuthSecret.properties.secretUri})' }
         { name: 'AZURE_AD_CLIENT_ID', value: azureAdClientId }
         { name: 'AZURE_AD_TENANT_ID', value: azureAdTenantId }
+        // First-user bootstrap: anyone in this list (case-insensitive) becomes
+        // auditor_lead on first sign-in iff no auditor_lead exists yet. Everyone
+        // else (notably B2B guests) defaults to client_reviewer.
+        { name: 'AUDITOR_LEAD_BOOTSTRAP_EMAILS', value: auditorLeadBootstrapEmails }
         // Engagement metadata
         { name: 'ENGAGEMENT_NAME', value: engagementName }
         // App Insights

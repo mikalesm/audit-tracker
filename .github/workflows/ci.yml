@@ -47,3 +47,38 @@ jobs:
           echo "healthz never responded"
           docker logs app
           exit 1
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci --no-audit --no-fund
+
+      # Playwright lives outside package.json so the lockfile stays untouched
+      # (the main build job's `npm ci` requires strict integrity).
+      - run: npm install --no-save @playwright/test@^1.49.0
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright suite
+        run: npm run test:e2e
+        env:
+          AUTH_DEV_BYPASS: '1'
+          NEXTAUTH_SECRET: 'e2e-only-secret'
+          AUDITOR_LEAD_BOOTSTRAP_EMAILS: 'lead@example.test'
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: |
+            test-results
+            playwright-report
+          retention-days: 7

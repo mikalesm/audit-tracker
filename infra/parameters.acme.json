@@ -14,6 +14,7 @@
     "azureAdClientId":          { "value": "REPLACE_WITH_APP_REGISTRATION_CLIENT_ID" },
     "azureAdTenantId":          { "value": "REPLACE_WITH_TENANT_ID" },
     "engagementName":           { "value": "Acme FY26 IT Audit" },
+    "auditorLeadBootstrapEmails": { "value": "lead.auditor@yourfirm.com" },
     "nextAuthUrl":              { "value": "" },
     "nextAuthSecret":           {
       "reference": {
