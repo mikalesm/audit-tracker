@@ -21,6 +21,10 @@ export async function GET() {
     }, { status: degraded ? 503 : 200 });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    // Surface to container logs — a healthz failure that's only visible via
+    // the JSON response is unobservable from `docker logs` and from Azure
+    // App Insights, which is exactly the failure mode this rescue is for.
+    console.error('[healthz] failed:', e);
     return NextResponse.json({ ok: false, error: msg }, { status: 503 });
   }
 }

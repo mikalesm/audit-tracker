@@ -36,7 +36,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/src/lib/migrations ./src/lib/migr
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/tsx ./node_modules/tsx
 COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
-RUN chmod +x ./scripts/entrypoint.sh
+RUN chmod +x ./scripts/entrypoint.sh \
+ && mkdir -p /app/data/pgdata \
+ && chown -R nextjs:nodejs /app/data
 
 USER nextjs
 EXPOSE 3000
