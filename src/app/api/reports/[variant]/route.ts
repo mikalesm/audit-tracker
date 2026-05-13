@@ -5,17 +5,21 @@ import { listPBC } from '@/lib/repository/pbc';
 import { listAccess } from '@/lib/repository/access';
 import { listWalkthroughs } from '@/lib/repository/walkthroughs';
 import { getSettings } from '@/lib/repository/settings';
+import { requireRole, isErrorResponse } from '@/lib/rbac';
 import React from 'react';
 import type { TSC } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest, ctx: { params: { variant: string } }) {
+  const actor = await requireRole('auditor');
+  if (isErrorResponse(actor)) return actor;
+  const eid = actor.engagement!.id;
   const variant = ctx.params.variant;
   const [settings, allItems, walkthroughs] = await Promise.all([
-    getSettings(),
-    listPBC(),
-    listWalkthroughs(),
+    getSettings(eid),
+    listPBC(eid),
+    listWalkthroughs(eid),
   ]);
 
   const tscParam = req.nextUrl.searchParams.get('tsc');
@@ -30,7 +34,7 @@ export async function GET(req: NextRequest, ctx: { params: { variant: string } }
       settings, items, walkthroughs, variant: 'client', tscFilter,
     });
   } else {
-    const access = await listAccess();
+    const access = await listAccess(eid);
     element = React.createElement(FullStatusReport, {
       settings, items, access, walkthroughs, variant: 'full', tscFilter,
     });

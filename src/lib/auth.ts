@@ -22,6 +22,7 @@ declare module 'next-auth' {
       entraObjectId: string;
       email: string;
       role: Role;
+      systemRole: 'platform_admin' | 'member';
       name?: string | null;
       image?: string | null;
     };
@@ -92,6 +93,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (u) {
           token.dbId = u.id;
           token.role = u.role;
+          token.systemRole = u.systemRole;
           token.email = u.email;
           token.name = u.displayName ?? u.email;
         }
@@ -105,6 +107,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           entraObjectId: String(token.oid),
           email: String(token.email || ''),
           role: (token.role as Role) || ('client_reviewer' as Role),
+          systemRole: ((token.systemRole as string) === 'platform_admin' ? 'platform_admin' : 'member') as 'platform_admin' | 'member',
           name: token.name as string | null | undefined,
         };
         (session as unknown as { user: typeof u }).user = u;

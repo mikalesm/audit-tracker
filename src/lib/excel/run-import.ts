@@ -1,15 +1,26 @@
 import path from 'path';
 import { importFromExcelPath } from './import';
-import { closeDb } from '@/lib/db';
+import { closeDb, getDb } from '@/lib/db';
 import { runMigrations } from '@/lib/migrations/runner';
 
 const file = process.argv[2] || path.join(process.cwd(), 'data', 'import', 'IT_Audit_PBC_Tracker_v2.xlsx');
+const slug = process.argv[3] || 'audit1';
 
 (async () => {
   try {
     await runMigrations();
-    const summary = await importFromExcelPath(file);
-    console.log('Import summary:');
+    const db = await getDb();
+    const eng = (await db.query<{ id: number }>(
+      'SELECT id FROM engagements WHERE slug = $1',
+      [slug]
+    )).rows[0];
+    if (!eng) {
+      console.error(`Engagement '${slug}' not found. Create it first via the UI.`);
+      process.exitCode = 1;
+      return;
+    }
+    const summary = await importFromExcelPath(Number(eng.id), file);
+    console.log(`Import into engagement '${slug}' (id=${eng.id}):`);
     console.log(JSON.stringify(summary, null, 2));
   } catch (e) {
     console.error('Import failed:', e);

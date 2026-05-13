@@ -31,19 +31,24 @@ function toView(r: Row): SavedView {
   };
 }
 
-export async function listSavedViews(scope: string, userId: number | null = null): Promise<SavedView[]> {
+export async function listSavedViews(
+  engagementId: number,
+  scope: string,
+  userId: number | null = null,
+): Promise<SavedView[]> {
   const db = await getDb();
   // Show globally-shared views (created_by_id IS NULL) + the requesting user's own.
   const r = await db.query<Row>(
     `SELECT * FROM saved_views
-     WHERE scope = $1 AND (created_by_id IS NULL OR created_by_id = $2)
+     WHERE engagement_id = $1 AND scope = $2 AND (created_by_id IS NULL OR created_by_id = $3)
      ORDER BY created_at DESC`,
-    [scope, userId]
+    [engagementId, scope, userId]
   );
   return r.rows.map(toView);
 }
 
 export async function createSavedView(
+  engagementId: number,
   scope: string,
   name: string,
   filters: Record<string, unknown>,
@@ -51,15 +56,18 @@ export async function createSavedView(
 ): Promise<SavedView> {
   const db = await getDb();
   const r = await db.query<Row>(
-    `INSERT INTO saved_views (scope, name, filters_json, created_by_id)
-     VALUES ($1, $2, $3::jsonb, $4)
+    `INSERT INTO saved_views (engagement_id, scope, name, filters_json, created_by_id)
+     VALUES ($1, $2, $3, $4::jsonb, $5)
      RETURNING *`,
-    [scope, name, JSON.stringify(filters), userId]
+    [engagementId, scope, name, JSON.stringify(filters), userId]
   );
   return toView(r.rows[0]);
 }
 
-export async function deleteSavedView(id: number): Promise<void> {
+export async function deleteSavedView(engagementId: number, id: number): Promise<void> {
   const db = await getDb();
-  await db.query('DELETE FROM saved_views WHERE id = $1', [id]);
+  await db.query(
+    'DELETE FROM saved_views WHERE engagement_id = $1 AND id = $2',
+    [engagementId, id]
+  );
 }

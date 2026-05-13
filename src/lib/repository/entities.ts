@@ -3,7 +3,7 @@ import type { Entity } from '@/types';
 import { logActivity } from './activity';
 
 type Row = {
-  id: number; num: number; legal_entity: string | null; country_location: string | null;
+  id: number; engagement_id: number; num: number; legal_entity: string | null; country_location: string | null;
   it_model: string | null; key_applications: string | null; hosting: string | null;
   headcount: number | null; in_scope: string | null; rationale: string | null;
   updated_at: string | Date;
@@ -19,9 +19,12 @@ function toItem(r: Row): Entity {
   };
 }
 
-export async function listEntities(): Promise<Entity[]> {
+export async function listEntities(engagementId: number): Promise<Entity[]> {
   const db = await getDb();
-  const r = await db.query<Row>('SELECT * FROM entities ORDER BY num');
+  const r = await db.query<Row>(
+    'SELECT * FROM entities WHERE engagement_id = $1 ORDER BY num',
+    [engagementId]
+  );
   return r.rows.map(toItem);
 }
 
@@ -32,9 +35,17 @@ const COLS: Record<string, string> = {
 };
 const INT_COLS = new Set(['headcount']);
 
-export async function updateEntity(id: number, patch: Record<string, unknown>, userId: number | null = null): Promise<Entity> {
+export async function updateEntity(
+  engagementId: number,
+  id: number,
+  patch: Record<string, unknown>,
+  userId: number | null = null,
+): Promise<Entity> {
   const db = await getDb();
-  const existing = (await db.query<Row>('SELECT * FROM entities WHERE id = $1', [id])).rows[0];
+  const existing = (await db.query<Row>(
+    'SELECT * FROM entities WHERE engagement_id = $1 AND id = $2',
+    [engagementId, id]
+  )).rows[0];
   if (!existing) throw new Error('not found');
 
   await db.withTx(async (tx) => {
@@ -51,34 +62,52 @@ export async function updateEntity(id: number, patch: Record<string, unknown>, u
       if (oldStr === newStr) continue;
       const cast = INT_COLS.has(col) ? '::int' : '';
       await tx.query(
-        `UPDATE entities SET ${col} = $1${cast}, updated_at = NOW() WHERE id = $2`,
-        [newVal, id]
+        `UPDATE entities SET ${col} = $1${cast}, updated_at = NOW() WHERE engagement_id = $2 AND id = $3`,
+        [newVal, engagementId, id]
       );
-      await logActivity('entity', id, k, oldStr, newStr, userId, tx);
+      await logActivity(engagementId, 'entity', id, k, oldStr, newStr, userId, tx);
     }
   });
 
-  const fresh = (await db.query<Row>('SELECT * FROM entities WHERE id = $1', [id])).rows[0];
+  const fresh = (await db.query<Row>(
+    'SELECT * FROM entities WHERE engagement_id = $1 AND id = $2',
+    [engagementId, id]
+  )).rows[0];
   return toItem(fresh);
 }
 
-export async function addEntity(userId: number | null = null): Promise<Entity> {
+export async function addEntity(engagementId: number, userId: number | null = null): Promise<Entity> {
   const db = await getDb();
-  const next = (await db.query<{ n: number }>('SELECT COALESCE(MAX(num), 0) + 1 AS n FROM entities')).rows[0].n;
-  const inserted = (await db.query<Row>('INSERT INTO entities (num) VALUES ($1) RETURNING *', [next])).rows[0];
-  await logActivity('entity', Number(inserted.id), 'created', null, String(next), userId);
+  const next = (await db.query<{ n: number }>(
+    'SELECT COALESCE(MAX(num), 0) + 1 AS n FROM entities WHERE engagement_id = $1',
+    [engagementId]
+  )).rows[0].n;
+  const inserted = (await db.query<Row>(
+    'INSERT INTO entities (engagement_id, num) VALUES ($1, $2) RETURNING *',
+    [engagementId, next]
+  )).rows[0];
+  await logActivity(engagementId, 'entity', Number(inserted.id), 'created', null, String(next), userId);
   return toItem(inserted);
 }
 
-export async function deleteEntity(id: number, userId: number | null = null) {
+export async function deleteEntity(engagementId: number, id: number, userId: number | null = null) {
   const db = await getDb();
-  await db.query('DELETE FROM entities WHERE id = $1', [id]);
-  await logActivity('entity', id, 'deleted', null, null, userId);
+  await db.query(
+    'DELETE FROM entities WHERE engagement_id = $1 AND id = $2',
+    [engagementId, id]
+  );
+  await logActivity(engagementId, 'entity', id, 'deleted', null, null, userId);
 }
 
-export async function entitiesInScope() {
+export async function entitiesInScope(engagementId: number) {
   const db = await getDb();
-  const r1 = await db.query<{ c: number }>(`SELECT COUNT(*)::int AS c FROM entities WHERE in_scope = 'Y'`);
-  const r2 = await db.query<{ c: number }>(`SELECT COUNT(*)::int AS c FROM entities WHERE legal_entity IS NOT NULL`);
+  const r1 = await db.query<{ c: number }>(
+    `SELECT COUNT(*)::int AS c FROM entities WHERE engagement_id = $1 AND in_scope = 'Y'`,
+    [engagementId]
+  );
+  const r2 = await db.query<{ c: number }>(
+    `SELECT COUNT(*)::int AS c FROM entities WHERE engagement_id = $1 AND legal_entity IS NOT NULL`,
+    [engagementId]
+  );
   return { inScope: Number(r1.rows[0]?.c ?? 0), total: Number(r2.rows[0]?.c ?? 0) };
 }

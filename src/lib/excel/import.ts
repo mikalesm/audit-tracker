@@ -1,6 +1,5 @@
 import * as XLSX from 'xlsx';
 import * as fs from 'fs';
-import path from 'path';
 import { getDb } from '@/lib/db';
 import type { TSC } from '@/types';
 
@@ -68,20 +67,20 @@ function sheetToRows(sheet: XLSX.WorkSheet, headerCell: string): Record<string, 
   }) as Record<string, unknown>[];
 }
 
-export async function importFromExcelBuffer(buffer: Buffer): Promise<ImportSummary> {
+export async function importFromExcelBuffer(engagementId: number, buffer: Buffer): Promise<ImportSummary> {
   const wb = XLSX.read(buffer, { cellDates: true });
-  return importFromWorkbook(wb);
+  return importFromWorkbook(engagementId, wb);
 }
 
-export async function importFromExcelPath(filePath: string): Promise<ImportSummary> {
+export async function importFromExcelPath(engagementId: number, filePath: string): Promise<ImportSummary> {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Excel file not found: ${filePath}`);
   }
   const wb = XLSX.readFile(filePath, { cellDates: true });
-  return importFromWorkbook(wb);
+  return importFromWorkbook(engagementId, wb);
 }
 
-async function importFromWorkbook(wb: XLSX.WorkBook): Promise<ImportSummary> {
+async function importFromWorkbook(engagementId: number, wb: XLSX.WorkBook): Promise<ImportSummary> {
   const db = await getDb();
   const summary: ImportSummary = {
     pbc: { added: 0, updatedStatic: 0, total: 0 },
@@ -101,21 +100,24 @@ async function importFromWorkbook(wb: XLSX.WorkBook): Promise<ImportSummary> {
         if (num === null) continue;
         const cat = clean(r['Category']) || 'Governance';
         const tsc = DEFAULT_TSC_BY_CATEGORY[cat] || [];
-        const existing = (await tx.query<{ id: number }>('SELECT id FROM pbc_items WHERE num = $1', [num])).rows[0];
+        const existing = (await tx.query<{ id: number }>(
+          'SELECT id FROM pbc_items WHERE engagement_id = $1 AND num = $2',
+          [engagementId, num]
+        )).rows[0];
         if (existing) {
           await tx.query(
             `UPDATE pbc_items
-             SET category = $2, item_requested = $3, why_purpose = $4, format_expected = $5, priority = $6
-             WHERE num = $1`,
-            [num, cat, clean(r['Item Requested']) ?? '', clean(r['Why / Audit Purpose']) ?? '', clean(r['Format Expected']) ?? '', clean(r['Priority']) ?? 'Medium']
+             SET category = $3, item_requested = $4, why_purpose = $5, format_expected = $6, priority = $7
+             WHERE engagement_id = $1 AND num = $2`,
+            [engagementId, num, cat, clean(r['Item Requested']) ?? '', clean(r['Why / Audit Purpose']) ?? '', clean(r['Format Expected']) ?? '', clean(r['Priority']) ?? 'Medium']
           );
           summary.pbc.updatedStatic++;
         } else {
           await tx.query(
-            `INSERT INTO pbc_items (num, category, item_requested, why_purpose, format_expected, priority, owner_client, status, date_requested, date_received, notes, tsc_mapping)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10::date, $11, $12::jsonb)`,
+            `INSERT INTO pbc_items (engagement_id, num, category, item_requested, why_purpose, format_expected, priority, owner_client, status, date_requested, date_received, notes, tsc_mapping)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::date, $11::date, $12, $13::jsonb)`,
             [
-              num, cat,
+              engagementId, num, cat,
               clean(r['Item Requested']) ?? '',
               clean(r['Why / Audit Purpose']) ?? '',
               clean(r['Format Expected']) ?? '',
@@ -131,7 +133,10 @@ async function importFromWorkbook(wb: XLSX.WorkBook): Promise<ImportSummary> {
           summary.pbc.added++;
         }
       }
-      summary.pbc.total = Number((await tx.query<{ c: number }>('SELECT COUNT(*)::int AS c FROM pbc_items')).rows[0].c);
+      summary.pbc.total = Number((await tx.query<{ c: number }>(
+        'SELECT COUNT(*)::int AS c FROM pbc_items WHERE engagement_id = $1',
+        [engagementId]
+      )).rows[0].c);
     }
 
     // ---- Access Requests
@@ -142,11 +147,11 @@ async function importFromWorkbook(wb: XLSX.WorkBook): Promise<ImportSummary> {
         const num = toInt(r['#']);
         if (num === null) continue;
         const result = await tx.query(
-          `INSERT INTO access_requests (num, system, access_type, role_permissions, recommended_method, justification, owner_client, status, provisioned_date, notes)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10)
-           ON CONFLICT (num) DO NOTHING`,
+          `INSERT INTO access_requests (engagement_id, num, system, access_type, role_permissions, recommended_method, justification, owner_client, status, provisioned_date, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::date, $11)
+           ON CONFLICT (engagement_id, num) DO NOTHING`,
           [
-            num,
+            engagementId, num,
             clean(r['System / Platform']) ?? '',
             clean(r['Access Type']) ?? '',
             clean(r['Role / Permissions Needed']) ?? '',
@@ -160,7 +165,10 @@ async function importFromWorkbook(wb: XLSX.WorkBook): Promise<ImportSummary> {
         );
         if (result.rowCount > 0) summary.access.added++;
       }
-      summary.access.total = Number((await tx.query<{ c: number }>('SELECT COUNT(*)::int AS c FROM access_requests')).rows[0].c);
+      summary.access.total = Number((await tx.query<{ c: number }>(
+        'SELECT COUNT(*)::int AS c FROM access_requests WHERE engagement_id = $1',
+        [engagementId]
+      )).rows[0].c);
     }
 
     // ---- Walkthroughs
@@ -171,11 +179,11 @@ async function importFromWorkbook(wb: XLSX.WorkBook): Promise<ImportSummary> {
         const num = toInt(r['#']);
         if (num === null) continue;
         const result = await tx.query(
-          `INSERT INTO walkthroughs (num, process_area, key_topics, attendees, proposed_date, duration_min, status, notes)
-           VALUES ($1, $2, $3, $4, $5::date, $6, $7, $8)
-           ON CONFLICT (num) DO NOTHING`,
+          `INSERT INTO walkthroughs (engagement_id, num, process_area, key_topics, attendees, proposed_date, duration_min, status, notes)
+           VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8, $9)
+           ON CONFLICT (engagement_id, num) DO NOTHING`,
           [
-            num,
+            engagementId, num,
             clean(r['Process Area']) ?? '',
             clean(r['Key Topics']) ?? '',
             clean(r['Client Attendees Needed']) ?? '',
@@ -187,7 +195,10 @@ async function importFromWorkbook(wb: XLSX.WorkBook): Promise<ImportSummary> {
         );
         if (result.rowCount > 0) summary.walkthroughs.added++;
       }
-      summary.walkthroughs.total = Number((await tx.query<{ c: number }>('SELECT COUNT(*)::int AS c FROM walkthroughs')).rows[0].c);
+      summary.walkthroughs.total = Number((await tx.query<{ c: number }>(
+        'SELECT COUNT(*)::int AS c FROM walkthroughs WHERE engagement_id = $1',
+        [engagementId]
+      )).rows[0].c);
     }
 
     // ---- Entity Scope
@@ -198,11 +209,11 @@ async function importFromWorkbook(wb: XLSX.WorkBook): Promise<ImportSummary> {
         const num = toInt(r['#']);
         if (num === null) continue;
         const result = await tx.query(
-          `INSERT INTO entities (num, legal_entity, country_location, it_model, key_applications, hosting, headcount, in_scope, rationale)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-           ON CONFLICT (num) DO NOTHING`,
+          `INSERT INTO entities (engagement_id, num, legal_entity, country_location, it_model, key_applications, hosting, headcount, in_scope, rationale)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           ON CONFLICT (engagement_id, num) DO NOTHING`,
           [
-            num,
+            engagementId, num,
             clean(r['Legal Entity']),
             clean(r['Country / Location']),
             clean(r['IT Model (Centralized / Hybrid / Standalone)']),
@@ -215,7 +226,10 @@ async function importFromWorkbook(wb: XLSX.WorkBook): Promise<ImportSummary> {
         );
         if (result.rowCount > 0) summary.entities.added++;
       }
-      summary.entities.total = Number((await tx.query<{ c: number }>('SELECT COUNT(*)::int AS c FROM entities')).rows[0].c);
+      summary.entities.total = Number((await tx.query<{ c: number }>(
+        'SELECT COUNT(*)::int AS c FROM entities WHERE engagement_id = $1',
+        [engagementId]
+      )).rows[0].c);
     }
 
     // ---- Sampling & Testing
@@ -226,11 +240,11 @@ async function importFromWorkbook(wb: XLSX.WorkBook): Promise<ImportSummary> {
         const num = toInt(r['#']);
         if (num === null) continue;
         const result = await tx.query(
-          `INSERT INTO sampling_items (num, control_area, control_description, population_source, population_size, sample_size, sampling_method, test_status, findings_summary)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-           ON CONFLICT (num) DO NOTHING`,
+          `INSERT INTO sampling_items (engagement_id, num, control_area, control_description, population_source, population_size, sample_size, sampling_method, test_status, findings_summary)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           ON CONFLICT (engagement_id, num) DO NOTHING`,
           [
-            num,
+            engagementId, num,
             clean(r['Control Area']) ?? '',
             clean(r['Control Description']) ?? '',
             clean(r['Population Source']) ?? '',
@@ -243,7 +257,10 @@ async function importFromWorkbook(wb: XLSX.WorkBook): Promise<ImportSummary> {
         );
         if (result.rowCount > 0) summary.sampling.added++;
       }
-      summary.sampling.total = Number((await tx.query<{ c: number }>('SELECT COUNT(*)::int AS c FROM sampling_items')).rows[0].c);
+      summary.sampling.total = Number((await tx.query<{ c: number }>(
+        'SELECT COUNT(*)::int AS c FROM sampling_items WHERE engagement_id = $1',
+        [engagementId]
+      )).rows[0].c);
     }
   });
 

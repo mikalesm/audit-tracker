@@ -3,7 +3,7 @@ import type { PBCItem } from '@/types';
 import { logActivity } from './activity';
 
 type Row = {
-  id: number; num: number; category: string; item_requested: string;
+  id: number; engagement_id: number; num: number; category: string; item_requested: string;
   why_purpose: string; format_expected: string; priority: string;
   owner_client: string | null; status: string;
   date_requested: string | null; date_received: string | null;
@@ -47,15 +47,21 @@ function rowToItem(r: Row): PBCItem {
   };
 }
 
-export async function listPBC(): Promise<PBCItem[]> {
+export async function listPBC(engagementId: number): Promise<PBCItem[]> {
   const db = await getDb();
-  const r = await db.query<Row>('SELECT * FROM pbc_items ORDER BY num');
+  const r = await db.query<Row>(
+    'SELECT * FROM pbc_items WHERE engagement_id = $1 ORDER BY num',
+    [engagementId]
+  );
   return r.rows.map(rowToItem);
 }
 
-export async function getPBC(id: number): Promise<PBCItem | null> {
+export async function getPBC(engagementId: number, id: number): Promise<PBCItem | null> {
   const db = await getDb();
-  const r = await db.query<Row>('SELECT * FROM pbc_items WHERE id = $1', [id]);
+  const r = await db.query<Row>(
+    'SELECT * FROM pbc_items WHERE engagement_id = $1 AND id = $2',
+    [engagementId, id]
+  );
   return r.rows[0] ? rowToItem(r.rows[0]) : null;
 }
 
@@ -84,7 +90,6 @@ function normalizeForWrite(col: string, value: unknown): unknown {
     return JSON.stringify(Array.isArray(value) ? value : []);
   }
   if (DATE_COLUMNS.has(col)) {
-    // accept 'YYYY-MM-DD' or ISO datetime; let Postgres coerce
     return String(value).slice(0, 10);
   }
   return String(value);
@@ -99,10 +104,18 @@ function compareForActivity(col: string, oldVal: unknown, newVal: unknown): { ol
   return { oldStr: old, newStr: next, changed: old !== next };
 }
 
-export async function updatePBC(id: number, patch: Record<string, unknown>, userId: number | null = null): Promise<PBCItem> {
+export async function updatePBC(
+  engagementId: number,
+  id: number,
+  patch: Record<string, unknown>,
+  userId: number | null = null,
+): Promise<PBCItem> {
   const db = await getDb();
-  const existing = (await db.query<Row>('SELECT * FROM pbc_items WHERE id = $1', [id])).rows[0];
-  if (!existing) throw new Error(`PBC item ${id} not found`);
+  const existing = (await db.query<Row>(
+    'SELECT * FROM pbc_items WHERE engagement_id = $1 AND id = $2',
+    [engagementId, id]
+  )).rows[0];
+  if (!existing) throw new Error(`PBC item ${id} not found in engagement ${engagementId}`);
 
   await db.withTx(async (tx) => {
     for (const [field, value] of Object.entries(patch)) {
@@ -114,73 +127,85 @@ export async function updatePBC(id: number, patch: Record<string, unknown>, user
       if (!changed) continue;
       const cast = JSON_COLUMNS.has(col) ? '::jsonb' : DATE_COLUMNS.has(col) ? '::date' : '';
       await tx.query(
-        `UPDATE pbc_items SET ${col} = $1${cast}, updated_at = NOW() WHERE id = $2`,
-        [newStr, id]
+        `UPDATE pbc_items SET ${col} = $1${cast}, updated_at = NOW() WHERE engagement_id = $2 AND id = $3`,
+        [newStr, engagementId, id]
       );
-      await logActivity('pbc', id, field, oldStr, newStr, userId, tx);
+      await logActivity(engagementId, 'pbc', id, field, oldStr, newStr, userId, tx);
     }
   });
 
-  const updated = await getPBC(id);
+  const updated = await getPBC(engagementId, id);
   if (!updated) throw new Error(`PBC item ${id} disappeared after update`);
   return updated;
 }
 
-export async function pbcStatusCounts() {
+export async function pbcStatusCounts(engagementId: number) {
   const db = await getDb();
   const r = await db.query<{ status: string; count: string | number }>(
-    'SELECT status, COUNT(*)::int as count FROM pbc_items GROUP BY status'
+    'SELECT status, COUNT(*)::int as count FROM pbc_items WHERE engagement_id = $1 GROUP BY status',
+    [engagementId]
   );
   return r.rows.map(x => ({ status: x.status, count: Number(x.count) }));
 }
 
-export async function pbcCategoryStatus() {
+export async function pbcCategoryStatus(engagementId: number) {
   const db = await getDb();
   const r = await db.query<{ category: string; status: string; count: string | number }>(
-    'SELECT category, status, COUNT(*)::int as count FROM pbc_items GROUP BY category, status'
+    'SELECT category, status, COUNT(*)::int as count FROM pbc_items WHERE engagement_id = $1 GROUP BY category, status',
+    [engagementId]
   );
   return r.rows.map(x => ({ category: x.category, status: x.status, count: Number(x.count) }));
 }
 
-export async function pbcPriorityCounts() {
+export async function pbcPriorityCounts(engagementId: number) {
   const db = await getDb();
   const r = await db.query<{ priority: string; count: string | number }>(
-    'SELECT priority, COUNT(*)::int as count FROM pbc_items GROUP BY priority'
+    'SELECT priority, COUNT(*)::int as count FROM pbc_items WHERE engagement_id = $1 GROUP BY priority',
+    [engagementId]
   );
   return r.rows.map(x => ({ priority: x.priority, count: Number(x.count) }));
 }
 
-export async function pbcOutstandingHigh(): Promise<number> {
+export async function pbcOutstandingHigh(engagementId: number): Promise<number> {
   const db = await getDb();
   const r = await db.query<{ c: string | number }>(
-    `SELECT COUNT(*)::int as c FROM pbc_items WHERE priority = 'High' AND status NOT IN ('Received','Reviewed','N/A')`
+    `SELECT COUNT(*)::int as c FROM pbc_items
+      WHERE engagement_id = $1
+        AND priority = 'High'
+        AND status NOT IN ('Received','Reviewed','N/A')`,
+    [engagementId]
   );
   return Number(r.rows[0]?.c ?? 0);
 }
 
-export async function pbcReceivedTrend(days: number) {
+export async function pbcReceivedTrend(engagementId: number, days: number) {
   const db = await getDb();
   const r = await db.query<{ day: string; count: string | number }>(
     `SELECT TO_CHAR(DATE(ts), 'YYYY-MM-DD') AS day, COUNT(DISTINCT entity_id)::int AS count
      FROM activity_log
-     WHERE entity_type = 'pbc' AND field = 'status' AND new_value = 'Received'
-       AND ts >= NOW() - ($1 || ' days')::interval
+     WHERE engagement_id = $1
+       AND entity_type = 'pbc'
+       AND field = 'status'
+       AND new_value = 'Received'
+       AND ts >= NOW() - ($2 || ' days')::interval
      GROUP BY DATE(ts)
      ORDER BY day`,
-    [days]
+    [engagementId, days]
   );
   return r.rows.map(x => ({ day: x.day, count: Number(x.count) }));
 }
 
-export async function pbcOverdue() {
+export async function pbcOverdue(engagementId: number) {
   const db = await getDb();
   const r = await db.query<Row>(
     `SELECT * FROM pbc_items
-     WHERE date_requested IS NOT NULL
+     WHERE engagement_id = $1
+       AND date_requested IS NOT NULL
        AND date_received IS NULL
        AND status NOT IN ('Received','Reviewed','N/A')
        AND (NOW()::date - date_requested) > 7
-     ORDER BY date_requested ASC`
+     ORDER BY date_requested ASC`,
+    [engagementId]
   );
   return r.rows;
 }

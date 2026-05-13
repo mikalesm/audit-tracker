@@ -4,13 +4,17 @@ export type Role = 'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewe
 
 export const ROLES: readonly Role[] = ['auditor_lead', 'auditor', 'client_owner', 'client_reviewer'];
 
+export type SystemRole = 'platform_admin' | 'member';
+
 export interface AppUser {
   id: number;
   entraObjectId: string;
   email: string;
   displayName: string | null;
   upn: string | null;
+  /** Legacy global role — retained for backwards compat; new code uses memberships. */
   role: Role;
+  systemRole: SystemRole;
   isActive: boolean;
   createdAt: string;
   lastSeenAt: string | null;
@@ -19,7 +23,8 @@ export interface AppUser {
 type Row = {
   id: number; entra_object_id: string; email: string; display_name: string | null;
   upn: string | null;
-  role: string; is_active: boolean; created_at: string | Date; last_seen_at: string | Date | null;
+  role: string; system_role: string | null;
+  is_active: boolean; created_at: string | Date; last_seen_at: string | Date | null;
 };
 
 function toUser(r: Row): AppUser {
@@ -30,6 +35,7 @@ function toUser(r: Row): AppUser {
     displayName: r.display_name,
     upn: r.upn ?? null,
     role: r.role as Role,
+    systemRole: (r.system_role === 'platform_admin' ? 'platform_admin' : 'member') as SystemRole,
     isActive: Boolean(r.is_active),
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
     lastSeenAt: r.last_seen_at === null ? null
@@ -50,13 +56,10 @@ function bootstrapLeadEmails(): Set<string> {
 /**
  * Upsert a user on sign-in, bumping last_seen_at.
  *
- * Initial role policy:
- *   - If AUDITOR_LEAD_BOOTSTRAP_EMAILS lists this email and no auditor_lead
- *     exists yet, promote to auditor_lead.
- *   - Otherwise default to client_reviewer.
- *
- * This deliberately removes the old "first user wins" rule, which let a B2B
- * guest who clicked their invite first become the engagement lead.
+ * If AUDITOR_LEAD_BOOTSTRAP_EMAILS lists this email, system_role is promoted
+ * to 'platform_admin' on insert AND on subsequent sign-ins (idempotent). The
+ * per-engagement role lives on engagement_memberships and is unrelated to
+ * this column.
  */
 export async function upsertUserOnSignIn(
   entraObjectId: string,
@@ -66,36 +69,72 @@ export async function upsertUserOnSignIn(
 ): Promise<AppUser> {
   const db = await getDb();
   return db.withTx(async (tx) => {
+    const allowed = bootstrapLeadEmails();
+    const emailLc = (email || '').toLowerCase();
+    const wantsPlatformAdmin = allowed.has(emailLc);
+
     const existing = (await tx.query<Row>(
       'SELECT * FROM users WHERE entra_object_id = $1',
       [entraObjectId]
     )).rows[0];
 
     if (existing) {
+      // Re-evaluate platform_admin on every sign-in: if your email is in the
+      // bootstrap list and you're not platform_admin yet, get promoted now.
+      const newlyPromoted = wantsPlatformAdmin && existing.system_role !== 'platform_admin';
+      const newSystemRole = newlyPromoted ? 'platform_admin' : existing.system_role;
       await tx.query(
-        `UPDATE users SET email = $2, display_name = $3, upn = COALESCE($4, upn), last_seen_at = NOW() WHERE id = $1`,
-        [existing.id, email, displayName, upn]
+        `UPDATE users SET email = $2, display_name = $3, upn = COALESCE($4, upn),
+          system_role = $5, last_seen_at = NOW() WHERE id = $1`,
+        [existing.id, email, displayName, upn, newSystemRole]
       );
+      if (newlyPromoted) {
+        // Same bootstrap convenience as below: a freshly-promoted platform
+        // admin becomes auditor_lead on every engagement that has no lead.
+        await tx.query(
+          `INSERT INTO engagement_memberships (engagement_id, user_id, role)
+           SELECT e.id, $1, 'auditor_lead'
+             FROM engagements e
+            WHERE NOT EXISTS (
+              SELECT 1 FROM engagement_memberships m
+               WHERE m.engagement_id = e.id AND m.role = 'auditor_lead'
+            )
+            ON CONFLICT (engagement_id, user_id) DO NOTHING`,
+          [existing.id]
+        );
+      }
       const r = (await tx.query<Row>('SELECT * FROM users WHERE id = $1', [existing.id])).rows[0];
       return toUser(r);
     }
 
-    const allowed = bootstrapLeadEmails();
-    const emailLc = (email || '').toLowerCase();
-    let initialRole: Role = 'client_reviewer';
-    if (allowed.has(emailLc)) {
-      const { rows } = await tx.query<{ c: number }>(
-        `SELECT COUNT(*)::int AS c FROM users WHERE role = 'auditor_lead'`
+    const systemRole: SystemRole = wantsPlatformAdmin ? 'platform_admin' : 'member';
+    // Legacy `role` column is no longer load-bearing but retained NOT NULL by
+    // the old migration; default it to client_reviewer to satisfy the constraint.
+    const r = (await tx.query<Row>(
+      `INSERT INTO users (entra_object_id, email, display_name, upn, role, system_role, last_seen_at)
+       VALUES ($1, $2, $3, $4, 'client_reviewer', $5, NOW())
+       RETURNING *`,
+      [entraObjectId, email, displayName, upn, systemRole]
+    )).rows[0];
+
+    // Bootstrap convenience: a brand-new platform_admin is auto-added as
+    // auditor_lead to any engagement that has no auditor_lead yet. Without
+    // this, the very first platform admin would sign in and see an empty
+    // engagement list even though pre-seeded engagements exist.
+    if (systemRole === 'platform_admin') {
+      await tx.query(
+        `INSERT INTO engagement_memberships (engagement_id, user_id, role)
+         SELECT e.id, $1, 'auditor_lead'
+           FROM engagements e
+          WHERE NOT EXISTS (
+            SELECT 1 FROM engagement_memberships m
+             WHERE m.engagement_id = e.id AND m.role = 'auditor_lead'
+          )
+          ON CONFLICT (engagement_id, user_id) DO NOTHING`,
+        [Number(r.id)]
       );
-      if (Number(rows[0].c) === 0) initialRole = 'auditor_lead';
     }
 
-    const r = (await tx.query<Row>(
-      `INSERT INTO users (entra_object_id, email, display_name, upn, role, last_seen_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
-       RETURNING *`,
-      [entraObjectId, email, displayName, upn, initialRole]
-    )).rows[0];
     return toUser(r);
   });
 }
@@ -128,6 +167,7 @@ export async function setUserActive(id: number, isActive: boolean): Promise<AppU
 }
 
 export async function logAccess(
+  engagementId: number,
   userId: number,
   resourceType: string,
   resourceId: number | null,
@@ -137,8 +177,8 @@ export async function logAccess(
 ): Promise<void> {
   const db = await getDb();
   await db.query(
-    `INSERT INTO access_log (user_id, resource_type, resource_id, action, ip_address, user_agent)
-     VALUES ($1, $2, $3, $4, $5::inet, $6)`,
-    [userId, resourceType, resourceId, action, ipAddress, userAgent]
+    `INSERT INTO access_log (engagement_id, user_id, resource_type, resource_id, action, ip_address, user_agent)
+     VALUES ($1, $2, $3, $4, $5, $6::inet, $7)`,
+    [engagementId, userId, resourceType, resourceId, action, ipAddress, userAgent]
   );
 }

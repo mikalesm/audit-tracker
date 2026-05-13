@@ -3,7 +3,7 @@ import type { Walkthrough } from '@/types';
 import { logActivity } from './activity';
 
 type Row = {
-  id: number; num: number; process_area: string; key_topics: string; attendees: string;
+  id: number; engagement_id: number; num: number; process_area: string; key_topics: string; attendees: string;
   proposed_date: string | Date | null; duration_min: number | null; status: string;
   notes: string | null; updated_at: string | Date;
 };
@@ -24,9 +24,12 @@ function toItem(r: Row): Walkthrough {
   };
 }
 
-export async function listWalkthroughs(): Promise<Walkthrough[]> {
+export async function listWalkthroughs(engagementId: number): Promise<Walkthrough[]> {
   const db = await getDb();
-  const r = await db.query<Row>('SELECT * FROM walkthroughs ORDER BY num');
+  const r = await db.query<Row>(
+    'SELECT * FROM walkthroughs WHERE engagement_id = $1 ORDER BY num',
+    [engagementId]
+  );
   return r.rows.map(toItem);
 }
 
@@ -37,9 +40,17 @@ const COLS: Record<string, string> = {
 const DATE_COLS = new Set(['proposed_date']);
 const INT_COLS = new Set(['duration_min']);
 
-export async function updateWalkthrough(id: number, patch: Record<string, unknown>, userId: number | null = null): Promise<Walkthrough> {
+export async function updateWalkthrough(
+  engagementId: number,
+  id: number,
+  patch: Record<string, unknown>,
+  userId: number | null = null,
+): Promise<Walkthrough> {
   const db = await getDb();
-  const existing = (await db.query<Row>('SELECT * FROM walkthroughs WHERE id = $1', [id])).rows[0];
+  const existing = (await db.query<Row>(
+    'SELECT * FROM walkthroughs WHERE engagement_id = $1 AND id = $2',
+    [engagementId, id]
+  )).rows[0];
   if (!existing) throw new Error('not found');
 
   await db.withTx(async (tx) => {
@@ -63,26 +74,30 @@ export async function updateWalkthrough(id: number, patch: Record<string, unknow
       if (oldStr === newStr) continue;
       const cast = DATE_COLS.has(col) ? '::date' : INT_COLS.has(col) ? '::int' : '';
       await tx.query(
-        `UPDATE walkthroughs SET ${col} = $1${cast}, updated_at = NOW() WHERE id = $2`,
-        [newVal, id]
+        `UPDATE walkthroughs SET ${col} = $1${cast}, updated_at = NOW() WHERE engagement_id = $2 AND id = $3`,
+        [newVal, engagementId, id]
       );
-      await logActivity('walkthrough', id, k, oldStr, newStr, userId, tx);
+      await logActivity(engagementId, 'walkthrough', id, k, oldStr, newStr, userId, tx);
     }
   });
 
-  const fresh = (await db.query<Row>('SELECT * FROM walkthroughs WHERE id = $1', [id])).rows[0];
+  const fresh = (await db.query<Row>(
+    'SELECT * FROM walkthroughs WHERE engagement_id = $1 AND id = $2',
+    [engagementId, id]
+  )).rows[0];
   return toItem(fresh);
 }
 
-export async function upcomingWalkthroughs(days: number) {
+export async function upcomingWalkthroughs(engagementId: number, days: number) {
   const db = await getDb();
   const r = await db.query<Row>(
     `SELECT * FROM walkthroughs
-     WHERE proposed_date IS NOT NULL
+     WHERE engagement_id = $1
+       AND proposed_date IS NOT NULL
        AND proposed_date >= CURRENT_DATE
-       AND proposed_date <= CURRENT_DATE + ($1 || ' days')::interval
+       AND proposed_date <= CURRENT_DATE + ($2 || ' days')::interval
      ORDER BY proposed_date ASC`,
-    [days]
+    [engagementId, days]
   );
   return r.rows;
 }
