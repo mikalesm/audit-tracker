@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 interface Row {
   id: number; slug: string; name: string; clientName: string;
   itemCount: number; memberCount: number;
+  categories: string[];
   isMember: boolean;
   createdAt: string;
 }
@@ -52,7 +53,7 @@ export default function AdminTemplatesTable({ initial }: { initial: Row[] }) {
           <thead className="bg-canvas dark:bg-navy-950 text-[10.5px] uppercase tracking-wider text-ink-500 dark:text-slate-400">
             <tr>
               <th className="px-4 py-2 text-left font-semibold">Template name</th>
-              <th className="px-4 py-2 text-left font-semibold">Slug</th>
+              <th className="px-4 py-2 text-left font-semibold">Categories</th>
               <th className="px-4 py-2 text-right font-semibold">PBC items</th>
               <th className="px-4 py-2 text-left font-semibold">Created</th>
               <th className="px-4 py-2 w-0"></th>
@@ -63,9 +64,20 @@ export default function AdminTemplatesTable({ initial }: { initial: Row[] }) {
               <tr key={row.id} className="border-t border-rule dark:border-navy-800">
                 <td className="px-4 py-2.5">
                   <div className="font-medium">{row.name}</div>
-                  <div className="text-[10.5px] text-ink-500 dark:text-slate-400">{row.clientName}</div>
+                  <div className="text-[10.5px] text-ink-500 dark:text-slate-400 font-mono">{row.slug}</div>
                 </td>
-                <td className="px-4 py-2.5 font-mono text-ink-500 dark:text-slate-400">{row.slug}</td>
+                <td className="px-4 py-2.5">
+                  {row.categories.length === 0
+                    ? <span className="text-ink-500 dark:text-slate-400 italic">—</span>
+                    : (
+                      <span className="text-[11.5px]">
+                        {row.categories.slice(0, 3).join(', ')}
+                        {row.categories.length > 3 && (
+                          <span className="text-ink-500 dark:text-slate-400"> +{row.categories.length - 3} more</span>
+                        )}
+                      </span>
+                    )}
+                </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{row.itemCount}</td>
                 <td className="px-4 py-2.5 text-ink-500 dark:text-slate-400">
                   {new Date(row.createdAt).toLocaleDateString()}

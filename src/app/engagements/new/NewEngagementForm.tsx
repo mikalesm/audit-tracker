@@ -6,7 +6,13 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
 }
 
-interface Template { id: number; slug: string; name: string }
+interface Template {
+  id: number;
+  slug: string;
+  name: string;
+  itemCount: number;
+  categories: string[];
+}
 
 export default function NewEngagementForm() {
   const router = useRouter();
@@ -133,9 +139,21 @@ export default function NewEngagementForm() {
         >
           <option value="">— Start from empty engagement —</option>
           {templates.map(t => (
-            <option key={t.id} value={t.slug}>{t.name}</option>
+            <option key={t.id} value={t.slug}>
+              {t.name} — {t.itemCount} PBC items
+              {t.categories.length > 0 && ` (${t.categories.length} categories)`}
+            </option>
           ))}
         </select>
+        {fromTemplateSlug && (() => {
+          const t = templates.find(t => t.slug === fromTemplateSlug);
+          if (!t || t.categories.length === 0) return null;
+          return (
+            <p className="text-[11px] text-ink-500 dark:text-slate-400 mt-1.5">
+              Includes categories: <strong>{t.categories.join(', ')}</strong>
+            </p>
+          );
+        })()}
       </Field>
 
       {error && (

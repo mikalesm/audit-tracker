@@ -1,5 +1,10 @@
 import { getDb } from '@/lib/db';
 import type { Role } from '@/lib/repository/users';
+import {
+  LIBRARY,
+  type LibrarySelection,
+  type PBCCategory,
+} from '@/lib/templates/library';
 
 export type EngagementStatus = 'active' | 'closed' | 'archived';
 
@@ -66,22 +71,32 @@ export async function listEngagements(): Promise<Engagement[]> {
 
 /**
  * Listing for platform admin pages: client engagements with their member /
- * item counts. By default templates are excluded; pass `{ kind: 'template' }`
- * to get the template list, or `'all'` for everything.
+ * item counts AND the distinct PBC categories present. By default templates
+ * are excluded; pass `{ kind: 'template' }` for the template list, or
+ * `'all'` for everything.
  */
 export async function listAllEngagementsWithCounts(
   opts: { kind?: 'client' | 'template' | 'all' } = {},
-): Promise<Array<Engagement & { memberCount: number; itemCount: number }>> {
+): Promise<Array<Engagement & { memberCount: number; itemCount: number; categories: string[] }>> {
   const db = await getDb();
   const kind = opts.kind ?? 'client';
   const where =
     kind === 'template' ? 'WHERE e.is_template = TRUE'
     : kind === 'all'    ? ''
     :                     'WHERE e.is_template = FALSE';
-  const r = await db.query<EngagementRow & { member_count: string | number; item_count: string | number }>(
+  const r = await db.query<EngagementRow & {
+    member_count: string | number;
+    item_count: string | number;
+    categories: string[] | string | null;
+  }>(
     `SELECT e.*,
             (SELECT COUNT(*) FROM engagement_memberships m WHERE m.engagement_id = e.id) AS member_count,
-            (SELECT COUNT(*) FROM pbc_items p WHERE p.engagement_id = e.id) AS item_count
+            (SELECT COUNT(*) FROM pbc_items p WHERE p.engagement_id = e.id) AS item_count,
+            COALESCE(
+              (SELECT array_agg(DISTINCT category ORDER BY category)
+                 FROM pbc_items WHERE engagement_id = e.id),
+              ARRAY[]::text[]
+            ) AS categories
        FROM engagements e
        ${where}
       ORDER BY e.status, e.created_at DESC`
@@ -90,6 +105,11 @@ export async function listAllEngagementsWithCounts(
     ...toEngagement(row),
     memberCount: Number(row.member_count),
     itemCount: Number(row.item_count),
+    categories: Array.isArray(row.categories)
+      ? row.categories
+      : typeof row.categories === 'string'
+        ? (() => { try { return JSON.parse(row.categories as string); } catch { return []; } })()
+        : [],
   }));
 }
 
@@ -129,6 +149,11 @@ export interface CreateEngagementInput {
   isTemplate?: boolean;
   /** If set, copy PBC/access/walkthroughs/entities/sampling rows from this engagement. */
   fromTemplateId?: number | null;
+  /**
+   * If set, seed the new engagement from the in-code library, filtered by
+   * the selection. Mutually exclusive with `fromTemplateId`.
+   */
+  librarySeed?: LibrarySelection | null;
   createdById: number;
 }
 
@@ -175,11 +200,105 @@ export async function createEngagement(input: CreateEngagementInput): Promise<En
        ON CONFLICT DO NOTHING`,
       [eng.id, eng.clientName, eng.fiscalYear ?? '', eng.name]
     );
+    if (input.fromTemplateId && input.librarySeed) {
+      throw new Error('createEngagement: fromTemplateId and librarySeed are mutually exclusive');
+    }
     if (input.fromTemplateId) {
       await copyTemplateRows(tx, input.fromTemplateId, eng.id);
+    } else if (input.librarySeed) {
+      await seedFromLibrary(tx, eng.id, input.librarySeed);
     }
     return eng;
   });
+}
+
+/**
+ * Insert rows from the in-code LIBRARY into a freshly-created engagement,
+ * filtered by `selection`. Per-client fields (status, dates, owner_client,
+ * notes, findings_summary) are left to schema defaults so the new engagement
+ * starts clean.
+ */
+async function seedFromLibrary(
+  tx: { query: (sql: string, params: unknown[]) => Promise<{ rowCount: number }> },
+  engagementId: number,
+  selection: LibrarySelection,
+): Promise<void> {
+  // PBC items, filtered by category. Use insertion order so num is stable.
+  const picked = selection.pbcCategories as PBCCategory[];
+  if (picked.length > 0) {
+    const allowed = new Set<PBCCategory>(picked);
+    const filtered = LIBRARY.pbc.filter((i) => allowed.has(i.category));
+    let n = 0;
+    for (const item of filtered) {
+      n += 1;
+      await tx.query(
+        `INSERT INTO pbc_items (
+            engagement_id, num, category, item_requested, why_purpose, format_expected,
+            priority, tsc_mapping
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
+        [
+          engagementId, n, item.category, item.itemRequested, item.whyPurpose,
+          item.formatExpected, item.priority, JSON.stringify(item.tscMapping),
+        ]
+      );
+    }
+  }
+
+  if (selection.includeAccess) {
+    let n = 0;
+    for (const a of LIBRARY.access) {
+      n += 1;
+      await tx.query(
+        `INSERT INTO access_requests (
+            engagement_id, num, system, access_type, role_permissions,
+            recommended_method, justification
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [engagementId, n, a.system, a.accessType, a.rolePermissions, a.recommendedMethod, a.justification]
+      );
+    }
+  }
+
+  if (selection.includeWalkthroughs) {
+    let n = 0;
+    for (const w of LIBRARY.walkthroughs) {
+      n += 1;
+      await tx.query(
+        `INSERT INTO walkthroughs (
+            engagement_id, num, process_area, key_topics, attendees, duration_min
+          ) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [engagementId, n, w.processArea, w.keyTopics, w.attendees, w.durationMin]
+      );
+    }
+  }
+
+  if (selection.includeEntities) {
+    let n = 0;
+    for (const e of LIBRARY.entities) {
+      n += 1;
+      await tx.query(
+        `INSERT INTO entities (
+            engagement_id, num, legal_entity, country_location, it_model,
+            key_applications, hosting, headcount, in_scope, rationale
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [engagementId, n, e.legalEntity, e.countryLocation, e.itModel,
+         e.keyApplications, e.hosting, e.headcount, e.inScope, e.rationale]
+      );
+    }
+  }
+
+  if (selection.includeSampling) {
+    let n = 0;
+    for (const s of LIBRARY.sampling) {
+      n += 1;
+      await tx.query(
+        `INSERT INTO sampling_items (
+            engagement_id, num, control_area, control_description,
+            population_source, sampling_method
+          ) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [engagementId, n, s.controlArea, s.controlDescription, s.populationSource, s.samplingMethod]
+      );
+    }
+  }
 }
 
 /**
