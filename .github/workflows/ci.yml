@@ -39,14 +39,28 @@ jobs:
 
       - name: Smoke-test Docker image
         run: |
-          docker run -d --name app -p 3000:3000 -e AUTH_DEV_BYPASS=1 -e NEXTAUTH_SECRET=ci-only-secret -e NEXTAUTH_URL=http://localhost:3000 audit-tracker:ci
-          for i in {1..30}; do
-            if curl -fs http://localhost:3000/api/healthz; then echo; echo OK; exit 0; fi
+          set -x
+          docker run -d --name app -p 3000:3000 \
+            -e AUTH_DEV_BYPASS=1 \
+            -e NEXTAUTH_SECRET=ci-only-secret \
+            -e NEXTAUTH_URL=http://localhost:3000 \
+            audit-tracker:ci
+          # Give the container a moment to actually start the process before polling.
+          sleep 5
+          docker ps -a
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fs http://localhost:3000/api/healthz; then echo; echo "OK on attempt $i"; ok=1; break; fi
             sleep 2
           done
-          echo "healthz never responded"
-          docker logs app
-          exit 1
+          echo "--- container status ---"
+          docker ps -a
+          echo "--- container logs ---"
+          docker logs app || true
+          if [ "$ok" != "1" ]; then
+            echo "healthz never responded (waited 120s)"
+            exit 1
+          fi
 
   e2e:
     runs-on: ubuntu-latest
