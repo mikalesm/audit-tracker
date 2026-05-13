@@ -6,18 +6,60 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
 }
 
+const PBC_CATEGORIES = [
+  'Governance',
+  'Entities & Systems',
+  'Access Management',
+  'Change Management',
+  'IT Operations',
+  'Third Parties',
+  'Licensing',
+  'IT Spend',
+  'SOC 2 Readiness',
+  'Physical & Environmental',
+] as const;
+
+type PBCCategory = (typeof PBC_CATEGORIES)[number];
+
 export default function NewTemplateForm() {
   const router = useRouter();
   const [name, setName] = React.useState('Standard IT Audit');
   const [slug, setSlug] = React.useState('standard-it-audit');
   const [slugEdited, setSlugEdited] = React.useState(false);
   const [description, setDescription] = React.useState('');
+
+  // Scope selection — defaults to everything ticked.
+  const [categories, setCategories] = React.useState<Set<PBCCategory>>(
+    () => new Set<PBCCategory>(PBC_CATEGORIES)
+  );
+  const [includeAccess, setIncludeAccess] = React.useState(true);
+  const [includeWalkthroughs, setIncludeWalkthroughs] = React.useState(true);
+  const [includeEntities, setIncludeEntities] = React.useState(true);
+  const [includeSampling, setIncludeSampling] = React.useState(true);
+
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!slugEdited) setSlug(slugify(name));
   }, [name, slugEdited]);
+
+  function toggleCategory(c: PBCCategory) {
+    setCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(c)) next.delete(c);
+      else next.add(c);
+      return next;
+    });
+  }
+  function selectAll() { setCategories(new Set(PBC_CATEGORIES)); }
+  function clearAll()  { setCategories(new Set()); }
+
+  const totalSheets = (categories.size > 0 ? 1 : 0)
+    + (includeAccess ? 1 : 0)
+    + (includeWalkthroughs ? 1 : 0)
+    + (includeEntities ? 1 : 0)
+    + (includeSampling ? 1 : 0);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,13 +75,20 @@ export default function NewTemplateForm() {
           fiscalYear: '',
           description,
           isTemplate: true,
+          librarySeed: {
+            pbcCategories: Array.from(categories),
+            includeAccess,
+            includeWalkthroughs,
+            includeEntities,
+            includeSampling,
+          },
+          allowEmpty: totalSheets === 0,
         }),
       });
       const body = await r.json();
       if (!r.ok) { setError(body.error || 'Failed to create template'); return; }
-      // Switch into the new template so the user can upload Excel right away.
       await fetch(`/api/engagements/${body.slug}/switch`, { method: 'POST' });
-      router.push('/settings');
+      router.push('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create template');
     } finally {
@@ -48,7 +97,7 @@ export default function NewTemplateForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="bg-white dark:bg-navy-900 border border-rule dark:border-navy-700 rounded-lg p-6 space-y-4">
+    <form onSubmit={onSubmit} className="bg-white dark:bg-navy-900 border border-rule dark:border-navy-700 rounded-lg p-6 space-y-5">
       <Field label="Template name" hint="What you'll see in the 'Use template' dropdown when creating a new audit.">
         <input
           type="text"
@@ -59,7 +108,7 @@ export default function NewTemplateForm() {
         />
       </Field>
 
-      <Field label="URL slug" hint="Used in the template's internal URL. Lowercase, alphanumeric and hyphens, 3-32 chars.">
+      <Field label="URL slug" hint="Lowercase, alphanumeric and hyphens, 3-32 chars.">
         <input
           type="text"
           required
@@ -74,10 +123,60 @@ export default function NewTemplateForm() {
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          rows={3}
+          rows={2}
           className="w-full px-3 py-2 border border-rule dark:border-navy-700 rounded text-[13px] bg-canvas dark:bg-navy-950"
         />
       </Field>
+
+      <div>
+        <div className="flex items-baseline justify-between mb-2">
+          <label className="block text-[10.5px] uppercase tracking-wider font-semibold text-ink-500 dark:text-slate-400">
+            PBC categories
+          </label>
+          <div className="flex items-center gap-3 text-[11px]">
+            <button type="button" onClick={selectAll}
+              className="text-navy-700 hover:underline dark:text-navy-200">Select all</button>
+            <span className="text-ink-300 dark:text-navy-600">·</span>
+            <button type="button" onClick={clearAll}
+              className="text-navy-700 hover:underline dark:text-navy-200">Clear</button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {PBC_CATEGORIES.map(c => (
+            <label
+              key={c}
+              className={`flex items-center gap-2 px-2 py-1.5 rounded border text-[12.5px] cursor-pointer ${
+                categories.has(c)
+                  ? 'border-navy-700 bg-navy-50 dark:bg-navy-800 dark:border-navy-300'
+                  : 'border-rule dark:border-navy-700 hover:bg-canvas dark:hover:bg-navy-800'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={categories.has(c)}
+                onChange={() => toggleCategory(c)}
+                className="accent-navy-700"
+              />
+              <span>{c}</span>
+            </label>
+          ))}
+        </div>
+        <p className="text-[11px] text-ink-500 dark:text-slate-400 mt-2">
+          Items in unchecked categories aren&apos;t seeded into the template. You can always add more later by uploading an Excel from inside the template (Settings → Re-sync from Excel).
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-[10.5px] uppercase tracking-wider font-semibold text-ink-500 dark:text-slate-400 mb-2">
+          Other sheets
+        </label>
+        <div className="grid grid-cols-2 gap-1.5">
+          <Toggle label="Access Requests"   value={includeAccess}        onChange={setIncludeAccess} />
+          <Toggle label="Walkthroughs"      value={includeWalkthroughs}  onChange={setIncludeWalkthroughs} />
+          <Toggle label="Entity Scope"      value={includeEntities}      onChange={setIncludeEntities} />
+          <Toggle label="Sampling & Testing" value={includeSampling}     onChange={setIncludeSampling} />
+        </div>
+      </div>
 
       {error && (
         <div className="text-[12.5px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-900 rounded p-2">
@@ -85,7 +184,7 @@ export default function NewTemplateForm() {
         </div>
       )}
 
-      <div className="flex items-center gap-3 pt-2">
+      <div className="flex items-center gap-3 pt-1">
         <button
           type="submit"
           disabled={submitting || !name || !slug}
@@ -94,7 +193,7 @@ export default function NewTemplateForm() {
           {submitting ? 'Creating…' : 'Create template'}
         </button>
         <p className="text-[11.5px] text-ink-500 dark:text-slate-400">
-          You&apos;ll land on Settings inside the new template. Upload your Excel via Re-sync.
+          You&apos;ll be auto-switched into the new template after creation.
         </p>
       </div>
     </form>
@@ -108,5 +207,25 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       {children}
       {hint && <div className="text-[11.5px] text-ink-500 dark:text-slate-400 mt-1">{hint}</div>}
     </div>
+  );
+}
+
+function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label
+      className={`flex items-center gap-2 px-2 py-1.5 rounded border text-[12.5px] cursor-pointer ${
+        value
+          ? 'border-navy-700 bg-navy-50 dark:bg-navy-800 dark:border-navy-300'
+          : 'border-rule dark:border-navy-700 hover:bg-canvas dark:hover:bg-navy-800'
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={value}
+        onChange={(e) => onChange(e.target.checked)}
+        className="accent-navy-700"
+      />
+      <span>{label}</span>
+    </label>
   );
 }

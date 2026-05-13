@@ -7,6 +7,7 @@ import {
 } from '@/lib/repository/engagements';
 import { requireAuth, requirePlatformAdmin, isErrorResponse } from '@/lib/rbac';
 import { evidenceContainerFor } from '@/lib/blob';
+import { isValidCategory, type LibrarySelection, type PBCCategory } from '@/lib/templates/library';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,8 @@ export async function POST(req: NextRequest) {
     slug?: string; name?: string; clientName?: string;
     fiscalYear?: string; description?: string;
     isTemplate?: boolean; fromTemplateSlug?: string;
+    librarySeed?: Partial<LibrarySelection> & { pbcCategories?: unknown };
+    allowEmpty?: boolean;
   };
   try {
     body = await req.json();
@@ -43,6 +46,7 @@ export async function POST(req: NextRequest) {
   const fiscalYear = body.fiscalYear ? String(body.fiscalYear).trim() : null;
   const description = body.description ? String(body.description).trim() : null;
   const isTemplate = body.isTemplate === true;
+  const allowEmpty = body.allowEmpty === true;
 
   if (!slug || !isValidSlug(slug)) {
     return NextResponse.json({ error: 'invalid slug — lowercase, alphanumeric and dashes, 3-32 chars' }, { status: 400 });
@@ -57,6 +61,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `engagement '${slug}' already exists` }, { status: 409 });
   }
 
+  if (body.fromTemplateSlug && body.librarySeed) {
+    return NextResponse.json({ error: 'fromTemplateSlug and librarySeed are mutually exclusive' }, { status: 400 });
+  }
+
   // Resolve template if provided. Templates seed the new engagement with the
   // standard PBC/access/walkthroughs/entities/sampling rows (per-client fields
   // reset to defaults).
@@ -69,9 +77,40 @@ export async function POST(req: NextRequest) {
     fromTemplateId = t.id;
   }
 
+  // Validate librarySeed if provided.
+  let librarySeed: LibrarySelection | null = null;
+  if (body.librarySeed) {
+    const raw = body.librarySeed;
+    if (!Array.isArray(raw.pbcCategories)) {
+      return NextResponse.json({ error: 'librarySeed.pbcCategories must be an array' }, { status: 400 });
+    }
+    const cats: PBCCategory[] = [];
+    for (const c of raw.pbcCategories) {
+      if (!isValidCategory(c)) {
+        return NextResponse.json({ error: `librarySeed.pbcCategories: unknown category '${String(c)}'` }, { status: 400 });
+      }
+      cats.push(c);
+    }
+    const flags = {
+      includeAccess: raw.includeAccess === true,
+      includeWalkthroughs: raw.includeWalkthroughs === true,
+      includeEntities: raw.includeEntities === true,
+      includeSampling: raw.includeSampling === true,
+    };
+    const anyContent =
+      cats.length > 0 || flags.includeAccess || flags.includeWalkthroughs
+      || flags.includeEntities || flags.includeSampling;
+    if (!anyContent && !allowEmpty) {
+      return NextResponse.json({
+        error: 'librarySeed selects no content. Pass allowEmpty: true to create an empty engagement on purpose.',
+      }, { status: 400 });
+    }
+    librarySeed = { pbcCategories: cats, ...flags };
+  }
+
   const eng = await createEngagement({
     slug, name, clientName, fiscalYear, description,
-    isTemplate, fromTemplateId,
+    isTemplate, fromTemplateId, librarySeed,
     createdById: actor.userId,
   });
 
