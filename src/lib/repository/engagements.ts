@@ -11,6 +11,7 @@ export interface Engagement {
   fiscalYear: string | null;
   description: string | null;
   status: EngagementStatus;
+  isTemplate: boolean;
   createdAt: string;
   createdById: number | null;
 }
@@ -30,7 +31,8 @@ export interface EngagementForUser extends Engagement {
 type EngagementRow = {
   id: number; slug: string; name: string; client_name: string;
   fiscal_year: string | null; description: string | null;
-  status: string; created_at: string | Date; created_by_id: number | null;
+  status: string; is_template: boolean;
+  created_at: string | Date; created_by_id: number | null;
 };
 
 function toEngagement(r: EngagementRow): Engagement {
@@ -42,6 +44,7 @@ function toEngagement(r: EngagementRow): Engagement {
     fiscalYear: r.fiscal_year,
     description: r.description,
     status: r.status as EngagementStatus,
+    isTemplate: Boolean(r.is_template),
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
     createdById: r.created_by_id === null ? null : Number(r.created_by_id),
   };
@@ -61,14 +64,26 @@ export async function listEngagements(): Promise<Engagement[]> {
   return r.rows.map(toEngagement);
 }
 
-/** Listing for platform admin pages: every engagement, with member count. */
-export async function listAllEngagementsWithCounts(): Promise<Array<Engagement & { memberCount: number; itemCount: number }>> {
+/**
+ * Listing for platform admin pages: client engagements with their member /
+ * item counts. By default templates are excluded; pass `{ kind: 'template' }`
+ * to get the template list, or `'all'` for everything.
+ */
+export async function listAllEngagementsWithCounts(
+  opts: { kind?: 'client' | 'template' | 'all' } = {},
+): Promise<Array<Engagement & { memberCount: number; itemCount: number }>> {
   const db = await getDb();
+  const kind = opts.kind ?? 'client';
+  const where =
+    kind === 'template' ? 'WHERE e.is_template = TRUE'
+    : kind === 'all'    ? ''
+    :                     'WHERE e.is_template = FALSE';
   const r = await db.query<EngagementRow & { member_count: string | number; item_count: string | number }>(
     `SELECT e.*,
             (SELECT COUNT(*) FROM engagement_memberships m WHERE m.engagement_id = e.id) AS member_count,
             (SELECT COUNT(*) FROM pbc_items p WHERE p.engagement_id = e.id) AS item_count
        FROM engagements e
+       ${where}
       ORDER BY e.status, e.created_at DESC`
   );
   return r.rows.map((row) => ({
@@ -111,12 +126,20 @@ export interface CreateEngagementInput {
   clientName: string;
   fiscalYear?: string | null;
   description?: string | null;
+  isTemplate?: boolean;
+  /** If set, copy PBC/access/walkthroughs/entities/sampling rows from this engagement. */
+  fromTemplateId?: number | null;
   createdById: number;
 }
 
 /**
  * Create a new engagement and add the creator as its auditor_lead.
  * Also seeds the default settings rows so the engagement renders.
+ *
+ * If `fromTemplateId` is set, copy PBC items, access requests, walkthroughs,
+ * entities, and sampling controls from that template engagement. Per-client
+ * fields (status, dates, owner_client, notes, findings) are reset so the new
+ * engagement starts clean.
  */
 export async function createEngagement(input: CreateEngagementInput): Promise<Engagement> {
   if (!isValidSlug(input.slug)) {
@@ -125,12 +148,14 @@ export async function createEngagement(input: CreateEngagementInput): Promise<En
   const db = await getDb();
   return db.withTx(async (tx) => {
     const r = await tx.query<EngagementRow>(
-      `INSERT INTO engagements (slug, name, client_name, fiscal_year, description, created_by_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO engagements (slug, name, client_name, fiscal_year, description, is_template, created_by_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
       [
         input.slug, input.name, input.clientName,
-        input.fiscalYear ?? null, input.description ?? null, input.createdById,
+        input.fiscalYear ?? null, input.description ?? null,
+        input.isTemplate === true,
+        input.createdById,
       ]
     );
     const eng = toEngagement(r.rows[0]);
@@ -150,8 +175,96 @@ export async function createEngagement(input: CreateEngagementInput): Promise<En
        ON CONFLICT DO NOTHING`,
       [eng.id, eng.clientName, eng.fiscalYear ?? '', eng.name]
     );
+    if (input.fromTemplateId) {
+      await copyTemplateRows(tx, input.fromTemplateId, eng.id);
+    }
     return eng;
   });
+}
+
+/**
+ * Copy PBC/access/walkthroughs/entities/sampling rows from one engagement
+ * into another. Per-client fields are reset to defaults so the destination
+ * starts clean. Templated columns (category, item_requested, etc.) are
+ * preserved. Activity log + evidence files are never copied.
+ */
+async function copyTemplateRows(
+  tx: { query: (sql: string, params: unknown[]) => Promise<{ rowCount: number }> },
+  sourceId: number,
+  targetId: number,
+): Promise<void> {
+  // PBC items — preserve everything except per-client status/dates/owner/notes.
+  await tx.query(
+    `INSERT INTO pbc_items (
+        engagement_id, num, category, item_requested, why_purpose, format_expected,
+        priority, tsc_mapping, internal_comments
+      )
+      SELECT $1, num, category, item_requested, why_purpose, format_expected,
+             priority, tsc_mapping, internal_comments
+        FROM pbc_items
+       WHERE engagement_id = $2
+       ORDER BY num`,
+    [targetId, sourceId]
+  );
+  // Access requests — reset status / provisioned_date / notes.
+  await tx.query(
+    `INSERT INTO access_requests (
+        engagement_id, num, system, access_type, role_permissions,
+        recommended_method, justification
+      )
+      SELECT $1, num, system, access_type, role_permissions,
+             recommended_method, justification
+        FROM access_requests
+       WHERE engagement_id = $2
+       ORDER BY num`,
+    [targetId, sourceId]
+  );
+  // Walkthroughs — reset status / proposed_date / notes.
+  await tx.query(
+    `INSERT INTO walkthroughs (
+        engagement_id, num, process_area, key_topics, attendees, duration_min
+      )
+      SELECT $1, num, process_area, key_topics, attendees, duration_min
+        FROM walkthroughs
+       WHERE engagement_id = $2
+       ORDER BY num`,
+    [targetId, sourceId]
+  );
+  // Entities — copy as-is (templates of in-scope/out-of-scope examples).
+  await tx.query(
+    `INSERT INTO entities (
+        engagement_id, num, legal_entity, country_location, it_model,
+        key_applications, hosting, headcount, in_scope, rationale
+      )
+      SELECT $1, num, legal_entity, country_location, it_model,
+             key_applications, hosting, headcount, in_scope, rationale
+        FROM entities
+       WHERE engagement_id = $2
+       ORDER BY num`,
+    [targetId, sourceId]
+  );
+  // Sampling — reset test_status / findings.
+  await tx.query(
+    `INSERT INTO sampling_items (
+        engagement_id, num, control_area, control_description,
+        population_source, sampling_method
+      )
+      SELECT $1, num, control_area, control_description,
+             population_source, sampling_method
+        FROM sampling_items
+       WHERE engagement_id = $2
+       ORDER BY num`,
+    [targetId, sourceId]
+  );
+}
+
+/** Templates that any platform_admin can see when creating a new engagement. */
+export async function listTemplates(): Promise<Engagement[]> {
+  const db = await getDb();
+  const r = await db.query<EngagementRow>(
+    `SELECT * FROM engagements WHERE is_template = TRUE ORDER BY name`
+  );
+  return r.rows.map(toEngagement);
 }
 
 // ---- memberships ----
@@ -173,11 +286,13 @@ function toMembership(r: MembershipRow): Membership {
 
 export async function listEngagementsForUser(userId: number): Promise<EngagementForUser[]> {
   const db = await getDb();
+  // Templates are hidden from the regular picker — they're managed from /admin
+  // and never represent a client engagement.
   const r = await db.query<EngagementRow & { role: string }>(
     `SELECT e.*, m.role
        FROM engagements e
        JOIN engagement_memberships m ON m.engagement_id = e.id
-      WHERE m.user_id = $1
+      WHERE m.user_id = $1 AND e.is_template = FALSE
       ORDER BY e.status, e.created_at DESC`,
     [userId]
   );

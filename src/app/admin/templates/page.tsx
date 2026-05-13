@@ -2,20 +2,20 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getActor } from '@/lib/rbac';
 import { listAllEngagementsWithCounts, listEngagementsForUser } from '@/lib/repository/engagements';
-import AdminEngagementsTable from './AdminEngagementsTable';
+import AdminTemplatesTable from './AdminTemplatesTable';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminEngagementsPage() {
+export default async function AdminTemplatesPage() {
   const actor = await getActor();
-  if (!actor) redirect('/signin?callbackUrl=/admin/engagements');
+  if (!actor) redirect('/signin?callbackUrl=/admin/templates');
   if (actor.systemRole !== 'platform_admin') redirect('/engagements');
 
-  const [engagements, myEngagements] = await Promise.all([
-    listAllEngagementsWithCounts(),
+  const [templates, mine] = await Promise.all([
+    listAllEngagementsWithCounts({ kind: 'template' }),
     listEngagementsForUser(actor.userId),
   ]);
-  const myIds = new Set(myEngagements.map(e => e.id));
+  const mineIds = new Set(mine.map(m => m.id));
 
   return (
     <div className="min-h-screen flex flex-col bg-canvas dark:bg-navy-950">
@@ -29,8 +29,8 @@ export default async function AdminEngagementsPage() {
           </Link>
           <nav className="flex items-center gap-1 ml-6">
             <AdminTab href="/admin" label="Overview" />
-            <AdminTab href="/admin/engagements" label="Engagements" active />
-            <AdminTab href="/admin/templates" label="Templates" />
+            <AdminTab href="/admin/engagements" label="Engagements" />
+            <AdminTab href="/admin/templates" label="Templates" active />
             <AdminTab href="/admin/users" label="Users" />
           </nav>
           <div className="ml-auto text-[12px] text-ink-500 dark:text-slate-400">{actor.email}</div>
@@ -39,20 +39,25 @@ export default async function AdminEngagementsPage() {
 
       <main className="flex-1">
         <div className="max-w-[1100px] mx-auto px-6 py-10">
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-[20px] font-semibold tracking-tight">All engagements</h1>
+          <div className="flex items-center justify-between mb-1">
+            <h1 className="text-[20px] font-semibold tracking-tight">Engagement templates</h1>
             <Link
-              href="/engagements/new"
+              href="/admin/templates/new"
               className="px-3 h-8 inline-flex items-center rounded bg-navy-700 text-white text-[13px] hover:bg-navy-800"
             >
-              + New audit
+              + New template
             </Link>
           </div>
-          <p className="text-[12px] text-ink-500 dark:text-slate-400 mb-4">
-            Each row is an engagement. Members listed here include every role; the count is the total. PBC items count is per-engagement.
+          <p className="text-[12.5px] text-ink-500 dark:text-slate-400 mb-6">
+            A template is a special engagement holding the standard PBC list, walkthroughs, sampling controls, and entity scope.
+            When you create a new audit, you can pick a template and the new engagement is pre-populated with its rows. Per-client
+            fields (status, dates, owner, notes, findings) are reset; the structural fields (category, item description, format, priority, TSC mapping) are copied as-is.
+            <br /><br />
+            To <strong>edit</strong> a template, click <strong>Open</strong> below. The template becomes your current engagement and
+            you can use Settings → Re-sync from Excel to import or update its content. Templates are never shown in the regular engagement picker.
           </p>
-          <AdminEngagementsTable
-            initial={engagements.map(e => ({ ...e, isMember: myIds.has(e.id) }))}
+          <AdminTemplatesTable
+            initial={templates.map(t => ({ ...t, isMember: mineIds.has(t.id) }))}
           />
         </div>
       </main>
