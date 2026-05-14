@@ -2,142 +2,167 @@
 
 This is the running notebook for the audit-tracker project. Read this first at
 the start of a new session so you know what shape the system is in and what's
-next. (Supersedes the 2026-05-13 entry; prior sessions are summarised below.)
+next. (Supersedes the earlier 2026-05-14 entry — the RLS/drift-check session;
+prior sessions are summarised below.)
 
 ## TL;DR
 
 The app is a deployed, multi-tenant IT-audit platform: templates, an admin
-panel, role-tailored UX, the firm's real audit programme seeded in, and now
-**Postgres Row-Level Security** enforcing engagement isolation at the database.
+panel, role-tailored UX, the firm's real audit programme seeded in, Postgres
+Row-Level Security enforcing engagement isolation, and — as of this session —
+a **restyled UI**, a **decluttered PBC experience**, **4 new security audit
+categories**, and **entity-scoped PBC items** (the audit adapts per legal
+entity in scope).
 
 Live at: **https://app-audit-audit1-prod.azurewebsites.net**
-Currently running `ghcr.io/mikalesm/audit-tracker:a653e64` (latest `main`).
+Running `ghcr.io/mikalesm/audit-tracker:a653e64` — **prod has NOT been
+redeployed this session.** This session's work is on **PR #9**, not yet merged.
 
 The platform_admin is **`mihai.cotocel@carpa-tech.com`** (set via
 `AUDITOR_LEAD_BOOTSTRAP_EMAILS` app setting).
 
-The default seeded engagement is **`audit1`** (id=1). It is still empty — no
-template or real client audit has been created yet (see "immediately" below).
+Prod's default seeded engagement is **`audit1`** (id=1), still empty.
 
-**Note on workflow:** this session committed directly to `main` (no PRs) —
-that's the agreed flow for this repo. CI gates every push; deploys go through
-the `deploy.yml` GitHub Actions workflow (`az` is not installed locally).
+**⚠️ Workflow change:** the PR flow is now **enforced** — a direct push to
+`main` is blocked by the harness. This session shipped via **PR #9**
+(`claude/entity-scoped-audit-and-ui`). The prior handoff's "commit straight to
+main" note is no longer accurate. CI gates every push/PR; deploys still go
+through `deploy.yml` (manual / tag — never on push or merge).
+
+## Where this session's work lives
+
+- **Branch:** `claude/entity-scoped-audit-and-ui`
+- **PR:** https://github.com/mikalesm/audit-tracker/pull/9 (open, not merged)
+- **Commit:** `376d63d` — 45 files, +1195/−563
+- **New DB migration:** `0008_pbc_entity_scope.sql` — applies automatically on
+  container start (`entrypoint.sh` → `migrate-startup.mjs`). No manual step.
 
 ## What still needs doing (immediately)
 
-The operational day-one steps are *still* not done — the platform is ready but
-unused:
+1. **Review + merge PR #9.** Test plan is in the PR description.
+2. **Deploy to Azure** once merged — `deploy.yml` does not auto-run on merge;
+   trigger it manually (see "How to redeploy" below). Migration `0008` applies
+   on container start.
+3. **Prod day-one steps are still pending** (untouched this session — they need
+   doing on the *prod* `audit1` instance, this session worked against a local
+   `demo` engagement):
+   1. Create the first template (Switch ▾ → Platform admin → Templates → + New).
+   2. Create the first real client audit from that template (Switch ▾ → + New audit).
+   3. Invite a B2B colleague to verify the client experience.
 
-1. **Create the first template.** Sign in → header → Switch ▾ → Platform
-   admin → **Templates** → **+ New template**. Categories/sheets are ticked by
-   default; click Create. You land in the template engagement. The in-code
-   library (the firm's real programme) seeds it; optionally overlay your Excel
-   via Settings → Re-sync from Excel.
-2. **Create the first real client audit.** Header → Switch ▾ → **+ New audit**.
-   Fill in client name, fiscal year, slug. Pick the template in **Use template**.
-3. **Invite a B2B colleague** to that audit (`/engagements/<slug>/members`) to
-   verify the client experience in a private window.
+## What was done this session (2026-05-14, PR #9)
 
-Then verify the RLS change end-to-end in the browser (see below).
+A large UI + feature pass. Five themes, one commit (`376d63d`):
 
-## What was done this session (2026-05-14)
-
-Two changes, both committed straight to `main` and deployed:
-
-| Commit | What it shipped |
+| Theme | What shipped |
 | --- | --- |
-| `9ddf347` | **CI library drift-check.** `src/lib/templates/library.ts` is a hand transcription of the authoritative `data/templates/IT_Audit_PBC_Tracker_v2.xlsx`; the two feed different seed paths and could silently diverge. Added `scripts/check-library-sync.ts` (`npm run check:library`), wired into CI, comparing every workbook-derived field. Extracted shared sheet-parsing into `src/lib/excel/sheet-utils.ts` so the check parses identically to the importer. The check immediately caught one drifted PBC row (a paraphrased `whyPurpose`), now corrected. |
-| `b3fffb4` + `a653e64` | **Postgres Row-Level Security.** RLS as a fail-closed second layer behind the application-side `WHERE engagement_id` filtering — see "RLS" section below. `a653e64` is a one-line follow-up fixing the CI test (Postgres returns BIGINT as a string). |
+| **Visual restyle** | Refined design tokens in `tailwind.config.ts` (softer `rule` border, `rule-strong`, `shadow-card`/`shadow-pop` scale, calmer `canvas`); polished shared primitives (`Card`/`Button`/`Badge`/`Input`/`Select`); slimmed help banners (`HelpStrip`/`HelpPanel` → quiet collapsibles); restyled `Shell` header (taller, responsive `wide:` breakpoint, **Settings moved into the account menu**), dashboard, and `KPIStrip`. |
+| **PBC declutter** | `ContextSection` stripped of teaching `caption` + audience-chip noise (only `audience="internal"` renders a marker, reworded "Audit team only"). `PBCDetailPanel` regrouped into **Request / Workflow / Audit & references**; duplicated title + header status badges removed; list cards slimmed. |
+| **Client experience** | `ClientDashboard`: pending-items fallback (shows all outstanding when nothing is owner-assigned), **category accordion**, Overall-progress moved to top, vibrant **"Start here" priority focus band**. `PBCDetailPanel` for clients: prominent upload CTA, audit-team-only sections hidden, and a trimmed **"Your task"** box (Status + Owner + read-only Priority — no internal tracking fields). |
+| **Audit content** | 4 new categories in `src/lib/templates/library.ts` — **Endpoint & MDM, Security Posture, Cloud Security Posture, AI Governance** — 33 PBC items total. Library is now 88 items / 14 categories. `Category` union + `CATEGORIES` updated. |
+| **Entity-scoped PBC** | See the section below. |
 
-Also verified: the proprietary Excel workbook (open question from the prior
-handoff) **is** committed and fully wired into both seed paths — that question
-is closed.
+Also done (local only, not in the PR): created a local `demo` engagement and a
+client user `client@example.test` for testing the client experience.
 
-## RLS — how engagement isolation now works at the DB layer
+## Entity-scoped PBC items — how it works
 
-Migration **`0007_rls.sql`** enables + **forces** RLS on all 10 domain tables
-(`pbc_items`, `access_requests`, `walkthroughs`, `entities`, `sampling_items`,
-`evidence_files`, `settings`, `saved_views`, `activity_log`, `access_log`). The
-policy admits a row only when its `engagement_id` equals the `app.engagement_id`
-Postgres session variable; `WITH CHECK` blocks cross-engagement writes.
+Migration **`0008_pbc_entity_scope.sql`** adds two nullable columns to
+`pbc_items`: `entity_id BIGINT REFERENCES entities(id) ON DELETE SET NULL`
+(NULL = group-wide) and `template_key TEXT` (stable slug → library item).
+
+- **Library** (`src/lib/templates/library.ts`): every `LibraryPBCItem` now
+  carries `scope: 'group' | 'entity'` and `templateKey`, derived from
+  `DEFAULT_SCOPE_BY_CATEGORY` + `SCOPE_OVERRIDES`. Per-entity templates ≈ the
+  Entities & Systems inventories (network/app/asset/domain), all of Access
+  Management, and Physical & Environmental. Everything else is group-wide.
+- **Seeding** (`engagements.ts`): `seedFromLibrary` now inserts entities first,
+  then calls the exported `seedPbcItems(tx, engagementId, entityRows, selection)`
+  — group items get one row, per-entity items get one row **per in-scope
+  entity** (`in_scope='Y'`). `copyTemplateRows` remaps `entity_id` via an
+  old→new entity-id map.
+- **Re-sync** (`pbc.ts`): `syncPbcEntityScope(engagementId, userId?)` —
+  idempotent, **create-only**. Backfills `template_key` on legacy rows, then
+  ensures every per-entity template has one instance per in-scope entity.
+  Exposed at `POST /api/entities/sync-pbc` and triggered by the **"Generate
+  per-entity PBC items"** button on the Entities page.
+- **UI**: `EntityFilter` is now a *real* filter (was a cosmetic text-search) —
+  `state.tsx` context exposes `entityId`; `PBCView` filters
+  `entityId == null || i.entityId === entityId || i.entityId === null`. Per-entity
+  items show a 🏢 entity chip on cards + table rows; `PBCDetailPanel` shows the
+  entity in the header and has an editable Entity field (auditor-only) in the
+  Workflow box.
+- **`updatePBC`** guards against a cross-engagement `entity_id` (RLS scopes on
+  `engagement_id`, not `entity_id`).
+- **Not entity-scoped (deliberate, deferred):** walkthroughs, sampling,
+  access requests.
+- **`check-library-sync.ts`** updated — the 4 security categories are excluded
+  from the workbook drift-check; `scope`/`templateKey` are library-only fields.
+
+## RLS — how engagement isolation works at the DB layer
+
+(Unchanged this session. Migration `0007_rls.sql` enables + **forces** RLS on
+all 10 domain tables; the policy admits a row only when its `engagement_id`
+equals the `app.engagement_id` session var.)
 
 - **`withEngagement(id, fn)`** in `src/lib/db.ts` opens a transaction, sets the
-  session var transaction-locally, and installs an `AsyncLocalStorage`-scoped
-  adapter — so `getDb()` inside it transparently returns the scoped connection.
-  **The 11 repository files were not changed.** Every engagement-scoped API
-  route (22 of them) and the two server components that load engagement data
-  (`page.tsx`, `layout.tsx`) are wrapped in it.
-- **`withBypassRls(fn)`** is the request-unreachable escape hatch for genuinely
-  cross-engagement work: `createEngagement` (reads a template, writes the new
-  engagement) and `listAllEngagementsWithCounts` (admin aggregate). The
-  migration runners (`runner.ts`, `migrate-startup.mjs`) set `app.bypass_rls`
-  so migrations are exempt.
-- **`FORCE` is required** because the app connects as the Postgres principal
-  that owns the tables (it runs the migrations); without FORCE the owner
-  bypasses RLS.
-- **pglite does not enforce RLS** — local dev and the CI Docker smoke test run
-  on pglite and behave exactly as before (the app-side `WHERE` still filters).
-  Real enforcement is verified by the new **blocking `rls-isolation` CI job**,
-  which runs migrations + cross-engagement assertions against a real Postgres
-  service container, as a non-superuser table-owner role (mirroring prod). All
-  7 assertions pass.
+  session var transaction-locally, installs an `AsyncLocalStorage`-scoped
+  adapter. Every engagement-scoped API route + `page.tsx`/`layout.tsx` wrap in it.
+- **`withBypassRls(fn)`** is the escape hatch for cross-engagement work
+  (`createEngagement`, admin aggregates, migration runners).
+- `entity_id` needs **no new RLS policy** — `engagement_id` RLS already scopes
+  per-entity rows.
+- **pglite does not enforce RLS** — local dev / CI Docker smoke test run on
+  pglite and behave as before. Real enforcement is verified by the blocking
+  `rls-isolation` CI job against a real Postgres container.
 
-A path that forgets `withEngagement` will, on prod, see **zero rows**
-(fail-closed) — a visible bug, never a cross-engagement leak.
-
-**Not yet browser-verified:** `/api/healthz` only does `SELECT 1`, so it can't
-confirm the RLS-wrapped data paths. Sign in and confirm the dashboard / PBC
-list still load for an engagement. The route/page survey was exhaustive, but
-this is the one check that couldn't be automated.
-
-## Live state
+## Live state (prod)
 
 ```
 Resource group:  rg-audit-audit1-prod         (Australia East)
 App Service:     app-audit-audit1-prod
-Image:           ghcr.io/mikalesm/audit-tracker:a653e64  (latest main)
+Image:           ghcr.io/mikalesm/audit-tracker:a653e64   (NOT yet updated for PR #9)
 Postgres:        psql-audit-audit1-prod       (Entra auth, Managed Identity)
-Storage:         stauditaudit1jj7wkn          (one container per engagement)
-Key Vault:       kv-audit-audit1-jj7wkn       (NEXTAUTH_SECRET + AAD client secret)
-Entra App Reg:   698e870e-9465-4bf3-b9fd-7307e4aa1ae5  ("Audit Tracker (audit1)")
+Storage:         stauditaudit1jj7wkn
+Key Vault:       kv-audit-audit1-jj7wkn
+Entra App Reg:   698e870e-9465-4bf3-b9fd-7307e4aa1ae5
 Tenant:          ab9f6118-2f68-4594-b6cd-adbc16b9f239
 ```
 
-App settings set on the App Service (besides what Bicep handles):
+Prod DB schema is at `0007_rls.sql`; `0008` applies on the next deploy. One
+engagement: `audit1` (id=1).
 
-- `AUDITOR_LEAD_BOOTSTRAP_EMAILS=mihai.cotocel@carpa-tech.com`
-- `AUTH_TRUST_HOST=true`
-- `AZURE_AD_CLIENT_ID`, `AZURE_AD_TENANT_ID`, `AZURE_AD_CLIENT_SECRET` (Entra app)
-- `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGSSLMODE` (Bicep)
-- `NEXTAUTH_URL`, `NEXTAUTH_SECRET` (Bicep + Key Vault)
+## Local dev state
 
-DB schema is at migration `0007_rls.sql`. Migrations 0001 → 0007 all applied.
-One engagement: `audit1` (id=1, not a template).
+Local pglite (`data/pgdata/`, gitignored) has two engagements: `audit1` (id=1)
+and **`demo`** (id=2) — `demo` is seeded under the new entity-scoped model
+(5 entities, 2 in scope → 101 PBC items, 26 per-entity instances).
+`.env.local` (gitignored) has `AUTH_DEV_BYPASS=1` +
+`AUDITOR_LEAD_BOOTSTRAP_EMAILS=auditor@example.test` + a dev `NEXTAUTH_SECRET`.
+Dev sign-in: `auditor@example.test` (platform_admin) or `client@example.test`
+(client_owner on `demo`). `scripts/reseed-demo-pbc.ts` rebuilds `demo`'s
+entities + PBC; restart `npm run dev` after running it (pglite is single-process).
 
 ## Outstanding / next priorities
 
-Roughly in importance order. Each is plausibly a single-session focused change.
-
-1. **Rewrite the Playwright e2e suite for multi-tenant.** Still non-blocking in
-   CI with 2 passing + 7 skipped placeholders. Should cover: platform_admin
-   creates two engagements → seeds from templates → confirms isolation → invites
-   members → role enforcement. (The new `rls-isolation` CI job already covers
-   DB-level isolation; e2e would cover the UI/request layer.)
-2. **Front Door + WAF + private endpoints.** Bicep keeps
-   `publicNetworkAccess=Enabled` today (see `infra/workload.bicep`).
-3. **Linked-items picker polish.** The picker exists but is cramped.
-4. **Activity-log retention.** No auto-purge. If retention policy says "evict
-   `access_log` rows older than N months," add a periodic Job / trigger.
-5. **CI action versions.** GitHub flagged the Node 20 actions
-   (`actions/checkout@v4`, `docker/*`) for forced migration to Node 24 on
-   2026-06-02 — bump them before then.
-
-(Postgres RLS hardening — the prior #1 — is done as of this session.)
+1. **Review + merge PR #9, then deploy.**
+2. **Group-vs-entity classification review.** The `scope` tags in `library.ts`
+   are a sensible first pass; an auditor may want to retune which templates are
+   per-entity. Per-item overrides are possible via the detail panel.
+3. **Extend entity-scoping to walkthroughs / sampling** if wanted (deliberately
+   out of scope for PR #9).
+4. **Rewrite the Playwright e2e suite for multi-tenant** — still non-blocking,
+   2 passing + 7 skipped placeholders.
+5. **Front Door + WAF + private endpoints** — Bicep keeps
+   `publicNetworkAccess=Enabled` (`infra/workload.bicep`).
+6. **Activity-log retention** — no auto-purge.
+7. **CI action versions** — Node 20 actions flagged for forced Node 24
+   migration on 2026-06-02; bump before then.
 
 ## How to redeploy after a future change
 
 ```bash
-# from a machine with gh authed (az is NOT needed — deploy.yml does the Azure work)
+# az is NOT installed locally — deploy.yml does the Azure work via OIDC
 gh workflow run deploy.yml -R mikalesm/audit-tracker --ref main
 gh run watch -R mikalesm/audit-tracker $(gh run list -R mikalesm/audit-tracker \
   --workflow=deploy.yml --limit 1 --json databaseId --jq '.[0].databaseId')
@@ -145,62 +170,61 @@ gh run watch -R mikalesm/audit-tracker $(gh run list -R mikalesm/audit-tracker \
 curl -sS https://app-audit-audit1-prod.azurewebsites.net/api/healthz | jq .
 ```
 
-`deploy.yml` builds + pushes the image, logs into Azure via OIDC, points the
-App Service at the new image, restarts, and smoke-tests `/api/healthz`.
-Expected: `{"ok": true, "engine": "postgres", "degraded": false}`.
-Migrations run automatically on container start via `scripts/entrypoint.sh` →
-`scripts/migrate-startup.mjs`.
+`deploy.yml` builds + pushes the image, logs into Azure via OIDC, repoints the
+App Service, restarts, and smoke-tests `/api/healthz`. Migrations (incl. `0008`)
+run on container start via `entrypoint.sh` → `migrate-startup.mjs`.
 
 ## Reference: file map
-
-The bits the next session will most often touch:
 
 ```
 src/
 ├── app/
 │   ├── page.tsx / layout.tsx          # server components — wrapped in withEngagement
-│   ├── pbc/ walkthroughs/ settings/   # client views; data via /api/*
+│   ├── pbc/PBCView.tsx                # list (cards + table), real EntityFilter, entity chips
+│   ├── pbc/PBCDetailPanel.tsx         # slide-over — 3 groups, entity field, client "Your task" box
+│   ├── entities/EntitiesView.tsx      # entity table + "Generate per-entity PBC items" button
 │   ├── engagements/ admin/            # picker, members, platform-admin pages
 │   └── api/
-│       └── /* every engagement-scoped route wraps its body in
-│             withEngagement(actor.engagement.id, …); admin/auth/engagement-
-│             management routes do not (they touch no RLS table) */
+│       ├── pbc/ entities/             # entity-scoped routes wrap in withEngagement
+│       └── entities/sync-pbc/route.ts # POST → syncPbcEntityScope  (NEW)
+├── components/
+│   ├── shell/                        # Shell, EntityFilter, state.tsx (entityId context)
+│   ├── dashboard/                    # Dashboard (auditor), ClientDashboard (client)
+│   └── ui/                           # Card/Button/Badge/Input/Select, ContextSection, Help*
 ├── lib/
-│   ├── db.ts                          # withEngagement / withBypassRls / getDb,
-│   │                                  #   AsyncLocalStorage scope, PG + pglite adapters
-│   ├── rbac.ts                        # getActor / requireRole / requirePlatformAdmin
-│   ├── auth.ts                        # NextAuth v5 + dev-bypass + B2B normalization
-│   ├── excel/
-│   │   ├── import.ts / export.ts      # workbook round-trip
-│   │   └── sheet-utils.ts             # shared xlsx parsing (importer + drift-check)
-│   ├── templates/library.ts           # in-code master library (transcription of the xlsx)
-│   ├── repository/                    # one file per domain; all take engagementId first,
-│   │                                  #   call getDb() — unchanged by the RLS work
+│   ├── db.ts                         # withEngagement / withBypassRls / getDb, DbAdapter
+│   ├── templates/library.ts          # in-code master library — scope + templateKey on PBC items
+│   ├── repository/
+│   │   ├── engagements.ts            # seedFromLibrary / seedPbcItems / copyTemplateRows
+│   │   └── pbc.ts                    # listPBC/updatePBC + syncPbcEntityScope  (NEW fn)
 │   └── migrations/
-│       ├── 0001 … 0006                # baseline → multitenant → templates → walkthrough ctx
-│       ├── 0007_rls.sql               # enable + FORCE RLS, engagement-isolation policies
-│       └── runner.ts                  # sets app.bypass_rls per migration
+│       ├── 0001 … 0007               # baseline → multitenant → templates → RLS
+│       ├── 0008_pbc_entity_scope.sql # entity_id + template_key on pbc_items  (NEW)
+│       └── runner.ts
 ├── scripts/
-│   ├── migrate-startup.mjs            # Docker CMD migration runner; sets app.bypass_rls
-│   ├── check-library-sync.ts          # npm run check:library — CI drift-check
-│   └── test-rls-isolation.ts          # npm run test:rls — real-Postgres RLS assertions
-data/templates/IT_Audit_PBC_Tracker_v2.xlsx   # authoritative audit programme
-docs/ISOLATION.md                      # the engagement-isolation contract (incl. RLS)
+│   ├── check-library-sync.ts         # npm run check:library — drift-check (security cats excluded)
+│   ├── reseed-demo-pbc.ts            # one-off: rebuild local demo's entities + PBC  (NEW)
+│   └── test-rls-isolation.ts         # npm run test:rls
+data/templates/IT_Audit_PBC_Tracker_v2.xlsx   # authoritative audit programme (55 of the 88 items)
 .github/workflows/ci.yml               # build + check:library + rls-isolation + e2e
+.github/workflows/deploy.yml           # manual / tag — Azure deploy via OIDC
 ```
 
 ## Prior sessions (summary)
 
+- **2026-05-14 (earlier, direct-to-main):** CI library drift-check
+  (`check-library-sync.ts`) + Postgres Row-Level Security (`0007_rls.sql`,
+  `withEngagement`/`withBypassRls`, `rls-isolation` CI job).
 - **2026-05-13 and earlier (PRs #1–#8):** rescued the live deploy (Azure was
   silently on in-memory pglite); built multi-tenancy (engagements, memberships,
-  per-engagement `engagement_id` + blob containers); RBAC re-validated per
-  request; platform-admin pages; engagement templates + the in-code library;
-  UX overhaul (role-tailored dashboards, grouped nav, per-section save); seeded
-  the firm's real audit programme from the committed Excel workbook.
+  per-engagement `engagement_id` + blob containers); RBAC per request;
+  platform-admin pages; engagement templates + the in-code library; role-tailored
+  UX; seeded the firm's real audit programme from the committed Excel workbook.
 
 ## Open questions to confirm next session
 
 - Is `audit1` going to be archived once a real client engagement exists, or
   kept as a sandbox?
-- e2e rewrite vs. Front Door/WAF — which is the higher priority for the next
-  focused session?
+- Should walkthroughs / sampling also become entity-scoped?
+- Does the group-vs-entity `scope` classification in `library.ts` match how the
+  firm actually runs multi-entity audits?
