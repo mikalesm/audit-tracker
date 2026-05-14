@@ -1,7 +1,8 @@
 'use client';
 import * as React from 'react';
+import Link from 'next/link';
 import { signOut } from 'next-auth/react';
-import { LogOut, User as UserIcon } from 'lucide-react';
+import { LogOut, User as UserIcon, Settings } from 'lucide-react';
 
 const ROLE_LABEL: Record<string, string> = {
   auditor_lead: 'Lead auditor',
@@ -24,9 +25,9 @@ export default function UserMenu({ user }: { user: { email: string; role: string
     return (
       <a
         href="/signin"
-        className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded border border-rule dark:border-navy-700 text-[12px] hover:bg-canvas dark:hover:bg-navy-800"
+        className="h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md border border-rule dark:border-navy-700 text-[12px] hover:bg-canvas dark:hover:bg-navy-800"
       >
-        <UserIcon className="w-3 h-3" /> Sign in
+        <UserIcon className="w-3.5 h-3.5" /> Sign in
       </a>
     );
   }
@@ -37,7 +38,7 @@ export default function UserMenu({ user }: { user: { email: string; role: string
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(o => !o)}
-        className="h-7 px-1.5 inline-flex items-center gap-1.5 rounded border border-rule dark:border-navy-700 hover:bg-canvas dark:hover:bg-navy-800"
+        className="h-8 px-1.5 inline-flex items-center gap-1.5 rounded-md border border-rule dark:border-navy-700 hover:bg-canvas dark:hover:bg-navy-800"
         aria-label="Account menu"
       >
         <span className="w-5 h-5 rounded-full bg-navy-700 text-white text-[10px] font-semibold flex items-center justify-center">
@@ -55,12 +56,23 @@ export default function UserMenu({ user }: { user: { email: string; role: string
               {ROLE_LABEL[user.role] || user.role}
             </div>
           </div>
-          <button
-            onClick={() => signOut({ callbackUrl: '/signin' })}
-            className="w-full text-left px-3 py-2 text-[12.5px] hover:bg-canvas dark:hover:bg-navy-800 inline-flex items-center gap-2"
-          >
-            <LogOut className="w-3 h-3 text-ink-500" /> Sign out
-          </button>
+          <div className="py-1">
+            {user.role === 'auditor_lead' && (
+              <Link
+                href="/settings"
+                onClick={() => setOpen(false)}
+                className="w-full text-left px-3 py-2 text-[12.5px] hover:bg-canvas dark:hover:bg-navy-800 flex items-center gap-2"
+              >
+                <Settings className="w-3.5 h-3.5 text-ink-500" /> Engagement settings
+              </Link>
+            )}
+            <button
+              onClick={() => signOut({ callbackUrl: '/signin' })}
+              className="w-full text-left px-3 py-2 text-[12.5px] hover:bg-canvas dark:hover:bg-navy-800 flex items-center gap-2"
+            >
+              <LogOut className="w-3.5 h-3.5 text-ink-500" /> Sign out
+            </button>
+          </div>
         </div>
       )}
     </div>

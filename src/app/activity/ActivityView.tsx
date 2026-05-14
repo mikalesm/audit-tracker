@@ -60,22 +60,22 @@ export default function ActivityView() {
   }, [filtered]);
 
   return (
-    <div className="px-6 py-6 max-w-[1100px] mx-auto">
-      <div className="flex items-center justify-between mb-5">
+    <div className="px-6 py-7 max-w-[1100px] mx-auto">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-[18px] font-semibold tracking-tight">Engagement timeline</h1>
-          <p className="text-[12px] text-ink-500 dark:text-slate-400 mt-0.5">
+          <h1 className="text-[21px] font-semibold tracking-tight">Engagement timeline</h1>
+          <p className="text-[12.5px] text-ink-500 dark:text-slate-400 mt-1">
             {filtered.length} of {entries.length} change{entries.length === 1 ? '' : 's'} across all entities
           </p>
         </div>
         <div className="flex items-center gap-2">
           <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-            className="h-8 rounded-md border border-rule dark:border-navy-700 bg-white dark:bg-navy-900 px-2 text-[12.5px]">
+            className="h-9 rounded-md border border-rule-strong dark:border-navy-700 bg-white dark:bg-navy-900 px-2.5 text-[12.5px]">
             <option value="">All types</option>
             {Object.entries(TYPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
           <select value={fieldFilter} onChange={e => setFieldFilter(e.target.value)}
-            className="h-8 rounded-md border border-rule dark:border-navy-700 bg-white dark:bg-navy-900 px-2 text-[12.5px]">
+            className="h-9 rounded-md border border-rule-strong dark:border-navy-700 bg-white dark:bg-navy-900 px-2.5 text-[12.5px]">
             <option value="">All fields</option>
             {fields.map(f => <option key={f} value={f}>{f}</option>)}
           </select>

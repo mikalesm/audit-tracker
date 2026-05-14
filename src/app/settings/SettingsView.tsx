@@ -45,10 +45,10 @@ export default function SettingsView() {
   if (!initial) return <div className="p-6"><div className="h-32 skeleton" /></div>;
 
   return (
-    <div className="px-4 md:px-6 py-8 max-w-[960px] mx-auto space-y-4">
+    <div className="px-4 md:px-6 py-7 max-w-[960px] mx-auto space-y-5">
       <div>
-        <h1 className="text-[20px] font-semibold tracking-tight">Settings</h1>
-        <p className="text-[12.5px] text-ink-500 dark:text-slate-400 mt-0.5">
+        <h1 className="text-[21px] font-semibold tracking-tight">Settings</h1>
+        <p className="text-[12.5px] text-ink-500 dark:text-slate-400 mt-1">
           Engagement-scoped settings. Changes here only affect <strong>{engagement?.name ?? 'this engagement'}</strong>.
         </p>
       </div>

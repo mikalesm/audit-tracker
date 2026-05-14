@@ -34,14 +34,19 @@ const config: Config = {
         success: { DEFAULT: '#548235' },
         warning: { DEFAULT: '#BF7F00' },
         danger: { DEFAULT: '#9C2A2A' },
-        canvas: '#F8F9FA',
-        rule: '#E5E7EB',
+        canvas: '#F6F7F9',
+        surface: '#FFFFFF',
+        rule: '#EBEDF0',
+        'rule-strong': '#DDE1E6',
         ink: {
           900: '#0F172A',
           700: '#334155',
           500: '#64748B',
           300: '#94A3B8',
         },
+      },
+      screens: {
+        wide: '1440px',
       },
       fontFamily: {
         sans: ['Inter', 'IBM Plex Sans', 'system-ui', 'sans-serif'],
@@ -53,8 +58,14 @@ const config: Config = {
       borderRadius: {
         sm: '4px',
         DEFAULT: '6px',
-        md: '6px',
-        lg: '8px',
+        md: '8px',
+        lg: '10px',
+        xl: '14px',
+      },
+      boxShadow: {
+        card: '0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.04)',
+        'card-hover': '0 2px 4px -1px rgb(15 23 42 / 0.06), 0 4px 12px -2px rgb(15 23 42 / 0.08)',
+        pop: '0 4px 12px -2px rgb(15 23 42 / 0.10), 0 8px 24px -4px rgb(15 23 42 / 0.12)',
       },
       transitionDuration: {
         DEFAULT: '150ms',

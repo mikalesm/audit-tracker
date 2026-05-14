@@ -74,7 +74,7 @@ export default function GlobalSearch() {
     <div ref={containerRef} className="relative">
       <button
         onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 0); }}
-        className="h-7 px-2.5 inline-flex items-center gap-2 rounded border border-rule bg-white dark:bg-navy-900 dark:border-navy-700 text-[12px] text-ink-500 dark:text-slate-400 hover:bg-canvas dark:hover:bg-navy-800 w-[200px]"
+        className="h-8 px-2.5 inline-flex items-center gap-2 rounded-md border border-rule bg-white dark:bg-navy-900 dark:border-navy-700 text-[12px] text-ink-500 dark:text-slate-400 hover:bg-canvas dark:hover:bg-navy-800 w-[180px] lg:w-[200px]"
       >
         <Search className="w-3.5 h-3.5" />
         Search

@@ -42,17 +42,17 @@ function Tile({ label, value, sub, trendData, danger, ring, suffix }: {
 }) {
   return (
     <div className={cn(
-      'rounded-lg border bg-white dark:bg-navy-900 px-5 py-4 flex flex-col justify-between min-h-[100px]',
-      'border-rule dark:border-navy-700',
-      danger && 'border-red-200 bg-red-50/30 dark:bg-red-950/20 dark:border-red-900'
+      'relative overflow-hidden rounded-xl border border-rule bg-white shadow-card dark:bg-navy-900 dark:border-navy-700 dark:shadow-none',
+      'px-4 py-3.5 flex flex-col justify-between min-h-[104px]',
     )}>
-      <div className="text-[10.5px] uppercase tracking-wider font-semibold text-ink-500 dark:text-slate-400">{label}</div>
+      {danger && <span className="absolute inset-y-0 left-0 w-[3px] bg-danger" aria-hidden />}
+      <div className="kpi-label">{label}</div>
       <div className="flex items-end justify-between gap-3 mt-2">
         <div className={cn(
           'kpi-num',
           danger ? 'text-danger' : 'text-ink-900 dark:text-slate-100'
         )}>
-          {value}{suffix && <span className="text-[18px] text-ink-500 ml-0.5">{suffix}</span>}
+          {value}{suffix && <span className="text-[17px] text-ink-500 ml-0.5">{suffix}</span>}
         </div>
         {ring && <ProgressRing pct={value} />}
         {trendData && trendData.length > 1 && (
@@ -65,7 +65,7 @@ function Tile({ label, value, sub, trendData, danger, ring, suffix }: {
           </div>
         )}
       </div>
-      {sub && <div className="text-[11px] text-ink-500 mt-1.5">{sub}</div>}
+      {sub && <div className="text-[11px] text-ink-500 mt-1.5 truncate">{sub}</div>}
     </div>
   );
 }
@@ -75,7 +75,7 @@ function ProgressRing({ pct }: { pct: number }) {
   const offset = c - (pct / 100) * c;
   return (
     <svg width="36" height="36" viewBox="0 0 36 36" className="shrink-0">
-      <circle cx="18" cy="18" r={r} fill="none" stroke="#E5E7EB" strokeWidth="2.5" className="dark:stroke-navy-800" />
+      <circle cx="18" cy="18" r={r} fill="none" stroke="#EBEDF0" strokeWidth="2.5" className="dark:stroke-navy-800" />
       <circle
         cx="18" cy="18" r={r} fill="none"
         stroke="#1F4E78" strokeWidth="2.5"

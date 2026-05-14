@@ -10,7 +10,7 @@ export function StatusPill({ status, className }: { status: string; className?: 
     <span
       title={help ? `${status} — ${help}` : status}
       className={cn(
-        'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset',
+        'inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset',
         c.bg, c.text, c.ring,
         className
       )}
@@ -29,7 +29,7 @@ export function Badge({ children, className, tone = 'neutral' }: { children: Rea
     gold:    'bg-gold-100 text-gold-800 ring-gold-200',
   };
   return (
-    <span className={cn('inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset', tones[tone], className)}>
+    <span className={cn('inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset', tones[tone], className)}>
       {children}
     </span>
   );

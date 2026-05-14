@@ -9,7 +9,7 @@ import { StatusPill, Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SavedFlash, useSaveIndicator } from '@/components/tables/SavedIndicator';
 import PBCDetailPanel from './PBCDetailPanel';
-import { Filter, ChevronDown, X, ListFilter, Download, BookmarkPlus, Bookmark, Trash2 } from 'lucide-react';
+import { Filter, ChevronDown, X, ListFilter, Download, BookmarkPlus, Bookmark, Trash2, AlertTriangle, Building2 } from 'lucide-react';
 import { useEntityFilter } from '@/components/shell/state';
 import HelpStrip from '@/components/ui/HelpStrip';
 import ViewToggle, { useViewMode } from '@/components/tables/ViewToggle';
@@ -87,7 +87,12 @@ export default function PBCView() {
   const { savedKey, flash } = useSaveIndicator();
   const undoStack = React.useRef<UndoOp[]>([]);
   const redoStack = React.useRef<UndoOp[]>([]);
-  const { entity } = useEntityFilter();
+  const { entityId, entities } = useEntityFilter();
+  const entityNameById = React.useMemo(() => {
+    const m = new Map<number, string>();
+    for (const e of entities) m.set(e.id, e.legalEntity || `Entity #${e.num}`);
+    return m;
+  }, [entities]);
 
   React.useEffect(() => {
     load();
@@ -239,12 +244,9 @@ export default function PBCView() {
     if (notesMode === 'has') arr = arr.filter(i => i.notes && i.notes.trim().length > 0);
     if (notesMode === 'none') arr = arr.filter(i => !i.notes || i.notes.trim().length === 0);
 
-    if (entity) {
-      const e = entity.toLowerCase();
-      arr = arr.filter(i =>
-        (i.notes || '').toLowerCase().includes(e) ||
-        (i.ownerClient || '').toLowerCase().includes(e)
-      );
+    // Entity filter: show the selected entity's items plus group-wide items.
+    if (entityId != null) {
+      arr = arr.filter(i => i.entityId === entityId || i.entityId === null);
     }
 
     if (view === 'high-outstanding') {
@@ -280,7 +282,7 @@ export default function PBCView() {
     });
 
     return arr;
-  }, [items, search, filterCats, filterPrios, filterStatuses, filterOwners, filterTSC, reqFrom, reqTo, recFrom, recTo, notesMode, sortKey, sortDir, view, entity]);
+  }, [items, search, filterCats, filterPrios, filterStatuses, filterOwners, filterTSC, reqFrom, reqTo, recFrom, recTo, notesMode, sortKey, sortDir, view, entityId]);
 
   const ownerOptions = React.useMemo(() => {
     const set = new Set<string>();
@@ -352,13 +354,13 @@ export default function PBCView() {
   const openItem = openId ? items.find(i => i.id === openId) : null;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3rem)]">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)]">
       <div className="px-6 pt-5 pb-4 border-b border-rule dark:border-navy-800 bg-white dark:bg-navy-950">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h1 className="text-[18px] font-semibold tracking-tight">PBC List</h1>
-            <p className="text-[12px] text-ink-500 dark:text-slate-400 mt-0.5">
-              {filtered.length} of {items.length} items · {entity ? `Entity: ${entity}` : 'All entities'}
+            <h1 className="text-[21px] font-semibold tracking-tight">PBC list</h1>
+            <p className="text-[12.5px] text-ink-500 dark:text-slate-400 mt-1">
+              {filtered.length} of {items.length} items · {entityId != null ? (entityNameById.get(entityId) ?? 'Entity') : 'All entities'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -385,7 +387,7 @@ export default function PBCView() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search items, owners, notes…"
-            className="h-8 w-[280px] rounded-md border border-rule bg-white dark:bg-navy-900 dark:border-navy-700 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-navy-400"
+            className="h-9 w-[280px] rounded-md border border-rule-strong bg-white dark:bg-navy-900 dark:border-navy-700 px-3 text-[13px] focus:outline-none focus:ring-2 focus:ring-navy-400"
           />
           <MultiFilter label="Category" options={[...CATEGORIES]} value={filterCats} onChange={setFilterCats} />
           <MultiFilter label="Priority" options={[...PRIORITIES]} value={filterPrios} onChange={setFilterPrios} />
@@ -426,7 +428,7 @@ export default function PBCView() {
           </div>
         </div>
         {selected.size > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 bg-navy-50 dark:bg-navy-800 border border-navy-200 dark:border-navy-700 rounded">
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 bg-navy-50 dark:bg-navy-800 border border-navy-200 dark:border-navy-700 rounded-md">
             <span className="text-[12px] font-medium">{selected.size} selected</span>
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] text-ink-500">Status:</span>
@@ -501,7 +503,7 @@ export default function PBCView() {
                     key={item.id}
                     onClick={() => setOpenId(item.id)}
                     className={cn(
-                      'group text-left rounded-lg border bg-white dark:bg-navy-950 p-4 transition-all hover:border-navy-400 hover:shadow-sm dark:hover:border-navy-500',
+                      'group text-left rounded-xl border bg-white shadow-card dark:bg-navy-950 dark:shadow-none p-4 transition-all hover:border-navy-300 hover:shadow-card-hover dark:hover:border-navy-500',
                       'border-rule dark:border-navy-700',
                       overdue && 'border-l-4 border-l-danger',
                       !overdue && item.priority === 'High' && 'border-l-4 border-l-amber-500',
@@ -519,21 +521,16 @@ export default function PBCView() {
                       </div>
                       <StatusPill status={item.status} />
                     </div>
-                    <div className="text-[13.5px] font-medium leading-snug text-ink-900 dark:text-slate-100 line-clamp-2 mb-1.5">
+                    <div className="text-[13.5px] font-medium leading-snug text-ink-900 dark:text-slate-100 line-clamp-2 mb-3">
                       {item.itemRequested}
                     </div>
-                    {item.whyPurpose ? (
-                      <p className="text-[12px] text-ink-500 dark:text-slate-400 leading-relaxed line-clamp-2 mb-2.5">
-                        <span className="font-semibold text-ink-700 dark:text-slate-300">Why:</span> {item.whyPurpose}
-                      </p>
-                    ) : (
-                      <p className="text-[12px] text-ink-500 italic mb-2.5">
-                        {isAuditor
-                          ? 'No "why" added yet — click to fill it in so the client understands.'
-                          : 'Auditor hasn\'t explained this yet — click to view & ask.'}
-                      </p>
-                    )}
                     <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                      {item.entityId != null && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-navy-50 text-navy-700 ring-1 ring-inset ring-navy-200 px-1.5 py-0.5 text-[10.5px] font-medium dark:bg-navy-800 dark:text-navy-200 dark:ring-navy-700">
+                          <Building2 className="w-3 h-3" />
+                          {entityNameById.get(item.entityId) ?? 'Entity'}
+                        </span>
+                      )}
                       <Badge tone={item.priority === 'High' ? 'danger' : item.priority.startsWith('Medium') ? 'gold' : 'neutral'}>
                         {item.priority}
                       </Badge>
@@ -547,8 +544,8 @@ export default function PBCView() {
                         <span className="text-ink-500 italic">Unassigned</span>
                       )}
                       {isAuditor && missingContext && (
-                        <span className="ml-auto text-amber-700 dark:text-amber-300 text-[10.5px]" title="Missing why or format">
-                          ⚠ missing context
+                        <span className="ml-auto inline-flex items-center gap-1 text-amber-700 dark:text-amber-300 text-[10.5px]" title="Missing why or format">
+                          <AlertTriangle className="w-3 h-3" /> Needs context
                         </span>
                       )}
                     </div>
@@ -657,12 +654,20 @@ export default function PBCView() {
                     {item.category}
                   </td>
                   <td>
-                    <button
-                      onClick={() => setOpenId(item.id)}
-                      className="text-left text-[13px] text-ink-900 dark:text-slate-100 hover:text-navy-700 dark:hover:text-navy-300 line-clamp-1"
-                    >
-                      {item.itemRequested}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {item.entityId != null && (
+                        <span className="shrink-0 inline-flex items-center gap-1 rounded bg-navy-50 text-navy-700 ring-1 ring-inset ring-navy-200 px-1.5 py-0.5 text-[10px] font-medium dark:bg-navy-800 dark:text-navy-200 dark:ring-navy-700">
+                          <Building2 className="w-2.5 h-2.5" />
+                          {entityNameById.get(item.entityId) ?? 'Entity'}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => setOpenId(item.id)}
+                        className="text-left text-[13px] text-ink-900 dark:text-slate-100 hover:text-navy-700 dark:hover:text-navy-300 line-clamp-1 min-w-0"
+                      >
+                        {item.itemRequested}
+                      </button>
+                    </div>
                   </td>
                   <td>
                     <InlineSelect

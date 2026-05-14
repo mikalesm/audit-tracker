@@ -22,7 +22,7 @@ export default async function MembersPage({ params }: { params: { slug: string }
   return (
     <div className="min-h-screen flex flex-col bg-canvas dark:bg-navy-950">
       <header className="border-b border-rule dark:border-navy-800 bg-white dark:bg-navy-950">
-        <div className="max-w-[920px] mx-auto px-6 h-12 flex items-center gap-4">
+        <div className="max-w-[920px] mx-auto px-6 h-14 flex items-center gap-4">
           <Link href="/engagements" className="flex items-center gap-2.5">
             <div className="w-6 h-6 rounded bg-navy-700 flex items-center justify-center">
               <span className="text-white text-[11px] font-bold tracking-tight">IT</span>

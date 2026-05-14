@@ -44,11 +44,11 @@ export default function AccessView() {
   const notRequestedCount = items.filter(i => i.status === 'Not Requested').length;
 
   return (
-    <div className="px-6 py-6 max-w-[1500px] mx-auto space-y-4">
+    <div className="px-6 py-7 max-w-[1500px] mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[18px] font-semibold tracking-tight">Access Requests</h1>
-          <p className="text-[12px] text-ink-500 dark:text-slate-400 mt-0.5">
+          <h1 className="text-[21px] font-semibold tracking-tight">Access requests</h1>
+          <p className="text-[12.5px] text-ink-500 dark:text-slate-400 mt-1">
             {items.length} read-only access requests · {notRequestedCount > 0 ? (
               <span className="text-danger">{notRequestedCount} still not requested</span>
             ) : <span className="text-emerald-700">all in motion</span>}
@@ -76,7 +76,7 @@ export default function AccessView() {
       )}
 
       {viewMode === 'table' && (
-        <div className="rounded-lg border border-rule dark:border-navy-700 bg-white dark:bg-navy-950 overflow-hidden">
+        <div className="rounded-xl border border-rule dark:border-navy-700 bg-white dark:bg-navy-950 shadow-card dark:shadow-none overflow-hidden">
           <div className="overflow-x-auto">
             <table className="data-table">
               <thead>
@@ -177,7 +177,7 @@ function CardList({
         <button
           key={item.id}
           onClick={() => onOpen(item.id)}
-          className="text-left rounded-lg border border-rule dark:border-navy-700 bg-white dark:bg-navy-950 p-4 transition-all hover:border-navy-400 hover:shadow-sm dark:hover:border-navy-500"
+          className="text-left rounded-xl border border-rule dark:border-navy-700 bg-white dark:bg-navy-950 shadow-card dark:shadow-none p-4 transition-all hover:border-navy-300 hover:shadow-card-hover dark:hover:border-navy-500"
         >
           <div className="flex items-start justify-between gap-2 mb-1.5">
             <div className="text-[10.5px] uppercase tracking-wider text-ink-500 dark:text-slate-400 font-mono">
@@ -259,7 +259,6 @@ function AccessDetailDialog({ item, isAuditor, onClose, onPatch }: {
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           <ContextSection
             label="System in scope"
-            caption="The platform or application the auditor needs access to."
             audience="client"
           >
             {isAuditor ? (
@@ -275,7 +274,6 @@ function AccessDetailDialog({ item, isAuditor, onClose, onPatch }: {
 
           <ContextSection
             label="Why this access is needed"
-            caption="Audit justification — helps the client approve quickly."
             audience="client"
           >
             {isAuditor ? (
@@ -294,7 +292,6 @@ function AccessDetailDialog({ item, isAuditor, onClose, onPatch }: {
 
           <ContextSection
             label="Permissions we need"
-            caption="The minimum set of read-only operations to perform testing."
             audience="client"
           >
             <InlineText
@@ -307,7 +304,6 @@ function AccessDetailDialog({ item, isAuditor, onClose, onPatch }: {
 
           <ContextSection
             label="Recommended method to grant"
-            caption="If a built-in role exists that covers exactly this, name it here."
             audience="client"
           >
             <InlineText
@@ -347,7 +343,6 @@ function AccessDetailDialog({ item, isAuditor, onClose, onPatch }: {
 
           <ContextSection
             label="Notes"
-            caption="Provisioning steps, ticket IDs, blockers."
             audience="both"
           >
             <InlineText value={item.notes} onCommit={v => onPatch({ notes: v })} placeholder="Add a note…" multiline />

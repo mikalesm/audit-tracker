@@ -2,11 +2,18 @@
 import * as React from 'react';
 import type { Entity } from '@/types';
 
-const EntityCtx = React.createContext<{ entity: string | null; setEntity: (s: string | null) => void; entities: Entity[] } | null>(null);
+interface EntityFilterValue {
+  /** Selected legal entity id, or `null` for "all entities". */
+  entityId: number | null;
+  setEntityId: (id: number | null) => void;
+  entities: Entity[];
+}
 
-export function useEntityFilter() {
+const EntityCtx = React.createContext<EntityFilterValue | null>(null);
+
+export function useEntityFilter(): EntityFilterValue {
   const ctx = React.useContext(EntityCtx);
-  if (!ctx) return { entity: null, setEntity: () => {}, entities: [] as Entity[] };
+  if (!ctx) return { entityId: null, setEntityId: () => {}, entities: [] as Entity[] };
   return ctx;
 }
 export function useEntities() {
@@ -14,11 +21,14 @@ export function useEntities() {
 }
 
 export function EntityFilterProvider({ children }: { children: React.ReactNode }) {
-  const [entity, setEntity] = React.useState<string | null>(null);
+  const [entityId, setEntityId] = React.useState<number | null>(null);
   const [entities, setEntities] = React.useState<Entity[]>([]);
 
   React.useEffect(() => {
-    try { const s = localStorage.getItem('entityFilter'); if (s) setEntity(s); } catch {}
+    try {
+      const s = localStorage.getItem('entityFilterId');
+      if (s) setEntityId(Number(s));
+    } catch {}
     fetch('/api/entities').then(r => r.json()).then(d => {
       const list = (d as Entity[]).filter(e => e.legalEntity);
       setEntities(list);
@@ -27,10 +37,10 @@ export function EntityFilterProvider({ children }: { children: React.ReactNode }
 
   React.useEffect(() => {
     try {
-      if (entity) localStorage.setItem('entityFilter', entity);
-      else localStorage.removeItem('entityFilter');
+      if (entityId != null) localStorage.setItem('entityFilterId', String(entityId));
+      else localStorage.removeItem('entityFilterId');
     } catch {}
-  }, [entity]);
+  }, [entityId]);
 
-  return <EntityCtx.Provider value={{ entity, setEntity, entities }}>{children}</EntityCtx.Provider>;
+  return <EntityCtx.Provider value={{ entityId, setEntityId, entities }}>{children}</EntityCtx.Provider>;
 }
