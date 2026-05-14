@@ -2,6 +2,7 @@
 import * as React from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { cn, STATUSES, PRIORITIES, CATEGORIES, TSC_VALUES, PRIORITY_BORDER, isOverdue, formatDate } from '@/lib/utils';
+import { CATEGORY_COVERAGE } from '@/lib/templates/library';
 import type { PBCItem } from '@/types';
 import { InlineDate, InlineSelect, InlineText } from '@/components/tables/InlineEdit';
 import { StatusPill, Badge } from '@/components/ui/badge';
@@ -508,7 +509,13 @@ export default function PBCView() {
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="text-[10.5px] uppercase tracking-wider text-ink-500 dark:text-slate-400 font-mono">
-                        #{item.num} · {item.category}
+                        #{item.num} ·{' '}
+                        <span
+                          className="underline decoration-dotted underline-offset-2"
+                          title={CATEGORY_COVERAGE[item.category as keyof typeof CATEGORY_COVERAGE]}
+                        >
+                          {item.category}
+                        </span>
                       </div>
                       <StatusPill status={item.status} />
                     </div>
@@ -643,7 +650,10 @@ export default function PBCView() {
                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(item.id)} onClick={e => e.stopPropagation()} />
                   </td>
                   <td className="sticky left-8 z-10 bg-white dark:bg-navy-950 group-hover:bg-canvas/70 dark:group-hover:bg-navy-900/40 text-ink-500 tabular w-12">{item.num}</td>
-                  <td className="sticky left-20 z-10 bg-white dark:bg-navy-950 group-hover:bg-canvas/70 dark:group-hover:bg-navy-900/40 text-[12px] text-ink-700 dark:text-slate-300 truncate max-w-[180px]">
+                  <td
+                    className="sticky left-20 z-10 bg-white dark:bg-navy-950 group-hover:bg-canvas/70 dark:group-hover:bg-navy-900/40 text-[12px] text-ink-700 dark:text-slate-300 truncate max-w-[180px]"
+                    title={CATEGORY_COVERAGE[item.category as keyof typeof CATEGORY_COVERAGE]}
+                  >
                     {item.category}
                   </td>
                   <td>

@@ -281,7 +281,7 @@ az webapp log tail -g "rg-audit-${CLIENT}-prod" -n "$APP_NAME"
 
 1. Open `https://app-audit-<client>-prod.azurewebsites.net/` in a private window.
 2. Sign in with your work account (you're a member of the `audit-leads` group, so you become `auditor_lead` automatically).
-3. Go to **Settings → Re-sync from Excel** and upload `IT_Audit_PBC_Tracker_v2.xlsx` (you have it locally at `data/import/`).
+3. Go to **Settings → Re-sync from Excel** and upload `IT_Audit_PBC_Tracker_v2.xlsx` (committed in the repo at `data/templates/`).
 4. Verify the Dashboard shows 55 PBC items.
 
 ---

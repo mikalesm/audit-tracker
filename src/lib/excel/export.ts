@@ -40,7 +40,9 @@ export async function exportToWorkbook(
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(access), 'Access Requests');
 
   const walks = (await db.query(`
-    SELECT num as "#", process_area as "Process Area", key_topics as "Key Topics",
+    SELECT num as "#", process_area as "Process Area",
+           description as "Description", objective as "Objective",
+           key_topics as "Key Topics",
            attendees as "Client Attendees Needed", proposed_date::text as "Proposed Date",
            duration_min as "Duration (min)", status as "Status", notes as "Notes"
     FROM walkthroughs WHERE engagement_id = $1 ORDER BY num

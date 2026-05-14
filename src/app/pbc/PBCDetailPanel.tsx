@@ -7,6 +7,7 @@ import { InlineDate, InlineSelect, InlineText } from '@/components/tables/Inline
 import { STATUSES, PRIORITIES, TSC_VALUES, formatDate, formatDateTime, fileSize, isOverdue } from '@/lib/utils';
 import { Upload, X, Trash2, Paperclip, Link2, Plus, Search, Info } from 'lucide-react';
 import ContextSection from '@/components/ui/ContextSection';
+import { CATEGORY_COVERAGE } from '@/lib/templates/library';
 
 type Role = 'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer';
 
@@ -89,7 +90,13 @@ export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-wider text-ink-500 dark:text-slate-400 mb-1">
-                #{item.num} · {item.category}
+                #{item.num} ·{' '}
+                <span
+                  className="underline decoration-dotted underline-offset-2"
+                  title={CATEGORY_COVERAGE[item.category as keyof typeof CATEGORY_COVERAGE]}
+                >
+                  {item.category}
+                </span>
               </div>
               <div className="text-[15px] font-semibold tracking-tight leading-tight text-ink-900 dark:text-slate-100">
                 {item.itemRequested}
