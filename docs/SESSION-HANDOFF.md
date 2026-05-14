@@ -1,67 +1,101 @@
-# Session handoff — 2026-05-13
+# Session handoff — 2026-05-14
 
-This is the running notebook for the audit-tracker project. Read this
-first at the start of a new session so you know what shape the system
-is in and what's next.
+This is the running notebook for the audit-tracker project. Read this first at
+the start of a new session so you know what shape the system is in and what's
+next. (Supersedes the 2026-05-13 entry; prior sessions are summarised below.)
 
 ## TL;DR
 
-The app went from "stuck single-tenant deploy returning 5xx" to a working
-multi-tenant master with templates, an admin panel, role-tailored UX,
-and a deployed live instance at:
+The app is a deployed, multi-tenant IT-audit platform: templates, an admin
+panel, role-tailored UX, the firm's real audit programme seeded in, and now
+**Postgres Row-Level Security** enforcing engagement isolation at the database.
 
-**https://app-audit-audit1-prod.azurewebsites.net**
-
-Currently running `ghcr.io/mikalesm/audit-tracker:c5281cc` (latest `main`).
-
-Six PRs merged this session: **#1 → #6**. All sit on `main`.
+Live at: **https://app-audit-audit1-prod.azurewebsites.net**
+Currently running `ghcr.io/mikalesm/audit-tracker:a653e64` (latest `main`).
 
 The platform_admin is **`mihai.cotocel@carpa-tech.com`** (set via
 `AUDITOR_LEAD_BOOTSTRAP_EMAILS` app setting).
 
-The default seeded engagement is **`audit1`** ("Audit 1 · Client Name ·
-FY2026"). It's currently empty — no PBC items, no walkthroughs, no
-templates created yet.
+The default seeded engagement is **`audit1`** (id=1). It is still empty — no
+template or real client audit has been created yet (see "immediately" below).
+
+**Note on workflow:** this session committed directly to `main` (no PRs) —
+that's the agreed flow for this repo. CI gates every push; deploys go through
+the `deploy.yml` GitHub Actions workflow (`az` is not installed locally).
 
 ## What still needs doing (immediately)
 
-Pick up here in the next session:
+The operational day-one steps are *still* not done — the platform is ready but
+unused:
 
 1. **Create the first template.** Sign in → header → Switch ▾ → Platform
-   admin → → **Templates** → **+ New template**. All ten PBC categories
-   and four sheets are ticked by default; click Create. You land in the
-   template engagement. Optionally overlay your own Excel via Settings →
-   Re-sync from Excel.
-2. **Create the first real client audit.** Header → Switch ▾ → **+ New
-   audit**. Fill in client name, fiscal year, slug. Pick the template
-   you just made in **Use template**. Submit.
-3. **Invite a B2B-style colleague to that audit** to verify the client
-   experience: `/engagements/<slug>/members` → add by email → Contributor
-   role. Sign in as them in a private window — you should land on the
-   new client-tailored dashboard.
+   admin → **Templates** → **+ New template**. Categories/sheets are ticked by
+   default; click Create. You land in the template engagement. The in-code
+   library (the firm's real programme) seeds it; optionally overlay your Excel
+   via Settings → Re-sync from Excel.
+2. **Create the first real client audit.** Header → Switch ▾ → **+ New audit**.
+   Fill in client name, fiscal year, slug. Pick the template in **Use template**.
+3. **Invite a B2B colleague** to that audit (`/engagements/<slug>/members`) to
+   verify the client experience in a private window.
 
-The `audit1` engagement can stay as a sandbox or be archived from
-`/admin/engagements` once the first real client audit exists.
+Then verify the RLS change end-to-end in the browser (see below).
 
-## What was done this session
+## What was done this session (2026-05-14)
 
-Chronological:
+Two changes, both committed straight to `main` and deployed:
 
-| PR | What it shipped |
+| Commit | What it shipped |
 | --- | --- |
-| **#1** (Phase 1+2) | Rescued the live deploy — Azure was silently running in-memory pglite because Bicep never assembled `DATABASE_URL`. Added entrypoint script that mints an AAD token and runs migrations against real Postgres. First-user privilege escalation gated by `AUDITOR_LEAD_BOOTSTRAP_EMAILS`. B2B guest UPN handling. healthz reports the engine + 503s if pglite ever sneaks into Azure. Migration 0003 added `users.upn`. Migration 0004 introduced engagements + memberships + per-table `engagement_id` (additive). Several CI fix iterations (tsc/e2e exclude, Dockerfile EACCES, `trustHost: true`, middleware bypass for healthz, GHCR pull credentials). |
-| **#2** (Phase C) | Multi-tenant cutover. Every repo function now takes `engagementId` and filters every query. `logActivity` / `logAccess` carry it. Per-engagement blob containers `evidence-eng-<id>`. `rbac.ts` rewritten: cookie + DB membership re-validated on every request. New routes: `/api/engagements` (list/create), `/api/engagements/[slug]/switch`, `/api/engagements/[slug]/members`. New pages: `/engagements`, `/engagements/new`, `/engagements/[slug]/members`. Shell got the engagement switcher. Bootstrap: a fresh platform_admin is auto-added as `auditor_lead` to any engagement without a lead. |
-| **#3** (Phase D) | Platform admin pages. `/admin` overview, `/admin/engagements` (list, change status, "join as lead"), `/admin/users` (toggle `platform_admin`, deactivate). Tightened `/api/engagements/[slug]/switch` so even platform_admin must be a member to switch into an engagement. `docs/ISOLATION.md` documents the cross-engagement isolation contract. |
-| **#4** (Phase E) | Engagement templates. Migration 0005 adds `is_template` boolean. `copyTemplateRows` clones an existing engagement's structural rows. `/admin/templates` list + create page. `/engagements/new` got a "Use template" dropdown. Per-engagement blob container reinforcement (`containerNameFor` rejects non-positive IDs). |
-| **#5** (Phase F) | In-code template library. `src/lib/templates/library.ts` carries ~50 PBC items across 10 categories, 12 access requests, 9 walkthroughs, 5 entities, 12 sampling controls. New-template form has ten category checkboxes + four sheet toggles (Access/Walkthroughs/Entities/Sampling). `/admin/templates` table gained a Categories column. Dropdown labels now show item count + category count. |
-| **#6** (Phase H) | UX overhaul. Header nav grouped: **Workspace · Scope · Audit · Admin** with thin vertical separators and a hamburger drawer below `md`. New `ClientDashboard` for client_owner/client_reviewer with "How this works" help, "What you need to upload", overdue alert, upcoming walkthroughs. Internal Comments tab hidden for clients. `useDirtyForm` hook + `CardFooter` slot. Settings has explicit **Save changes** buttons per section, Discard link, Unsaved-changes warning, beforeunload guard, and `router.refresh()` on success. Excel import also refreshes. Empty states on PBC + Walkthroughs are role-aware. |
+| `9ddf347` | **CI library drift-check.** `src/lib/templates/library.ts` is a hand transcription of the authoritative `data/templates/IT_Audit_PBC_Tracker_v2.xlsx`; the two feed different seed paths and could silently diverge. Added `scripts/check-library-sync.ts` (`npm run check:library`), wired into CI, comparing every workbook-derived field. Extracted shared sheet-parsing into `src/lib/excel/sheet-utils.ts` so the check parses identically to the importer. The check immediately caught one drifted PBC row (a paraphrased `whyPurpose`), now corrected. |
+| `b3fffb4` + `a653e64` | **Postgres Row-Level Security.** RLS as a fail-closed second layer behind the application-side `WHERE engagement_id` filtering — see "RLS" section below. `a653e64` is a one-line follow-up fixing the CI test (Postgres returns BIGINT as a string). |
+
+Also verified: the proprietary Excel workbook (open question from the prior
+handoff) **is** committed and fully wired into both seed paths — that question
+is closed.
+
+## RLS — how engagement isolation now works at the DB layer
+
+Migration **`0007_rls.sql`** enables + **forces** RLS on all 10 domain tables
+(`pbc_items`, `access_requests`, `walkthroughs`, `entities`, `sampling_items`,
+`evidence_files`, `settings`, `saved_views`, `activity_log`, `access_log`). The
+policy admits a row only when its `engagement_id` equals the `app.engagement_id`
+Postgres session variable; `WITH CHECK` blocks cross-engagement writes.
+
+- **`withEngagement(id, fn)`** in `src/lib/db.ts` opens a transaction, sets the
+  session var transaction-locally, and installs an `AsyncLocalStorage`-scoped
+  adapter — so `getDb()` inside it transparently returns the scoped connection.
+  **The 11 repository files were not changed.** Every engagement-scoped API
+  route (22 of them) and the two server components that load engagement data
+  (`page.tsx`, `layout.tsx`) are wrapped in it.
+- **`withBypassRls(fn)`** is the request-unreachable escape hatch for genuinely
+  cross-engagement work: `createEngagement` (reads a template, writes the new
+  engagement) and `listAllEngagementsWithCounts` (admin aggregate). The
+  migration runners (`runner.ts`, `migrate-startup.mjs`) set `app.bypass_rls`
+  so migrations are exempt.
+- **`FORCE` is required** because the app connects as the Postgres principal
+  that owns the tables (it runs the migrations); without FORCE the owner
+  bypasses RLS.
+- **pglite does not enforce RLS** — local dev and the CI Docker smoke test run
+  on pglite and behave exactly as before (the app-side `WHERE` still filters).
+  Real enforcement is verified by the new **blocking `rls-isolation` CI job**,
+  which runs migrations + cross-engagement assertions against a real Postgres
+  service container, as a non-superuser table-owner role (mirroring prod). All
+  7 assertions pass.
+
+A path that forgets `withEngagement` will, on prod, see **zero rows**
+(fail-closed) — a visible bug, never a cross-engagement leak.
+
+**Not yet browser-verified:** `/api/healthz` only does `SELECT 1`, so it can't
+confirm the RLS-wrapped data paths. Sign in and confirm the dashboard / PBC
+list still load for an engagement. The route/page survey was exhaustive, but
+this is the one check that couldn't be automated.
 
 ## Live state
 
 ```
 Resource group:  rg-audit-audit1-prod         (Australia East)
 App Service:     app-audit-audit1-prod
-Image:           ghcr.io/mikalesm/audit-tracker:c5281cc  (latest main)
+Image:           ghcr.io/mikalesm/audit-tracker:a653e64  (latest main)
 Postgres:        psql-audit-audit1-prod       (Entra auth, Managed Identity)
 Storage:         stauditaudit1jj7wkn          (one container per engagement)
 Key Vault:       kv-audit-audit1-jj7wkn       (NEXTAUTH_SECRET + AAD client secret)
@@ -77,132 +111,96 @@ App settings set on the App Service (besides what Bicep handles):
 - `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGSSLMODE` (Bicep)
 - `NEXTAUTH_URL`, `NEXTAUTH_SECRET` (Bicep + Key Vault)
 
-DB schema is at migration `0005_engagement_templates.sql`. Migrations
-0001 → 0005 all applied. One engagement: `audit1` (id=1, not a template).
+DB schema is at migration `0007_rls.sql`. Migrations 0001 → 0007 all applied.
+One engagement: `audit1` (id=1, not a template).
 
 ## Outstanding / next priorities
 
-Roughly in importance order. Each one is plausibly a single-session
-focused PR.
+Roughly in importance order. Each is plausibly a single-session focused change.
 
-1. **Postgres RLS hardening.** Documented as TODO in `docs/ISOLATION.md`.
-   The application-side `WHERE engagement_id = $N` filtering is consistent
-   today, but RLS as belt-and-suspenders means a future missing WHERE
-   can't leak across engagements. Needs a new migration that enables RLS
-   on every domain table, plus `withEngagement(id, fn)` in `db.ts` that
-   `SET LOCAL`s the session var inside a transaction.
-2. **Rewrite the Playwright e2e suite for multi-tenant.** Currently
-   non-blocking in CI with 2 passing + 7 skipped placeholders. Should
-   cover: platform_admin creates two engagements → seeds from templates
-   → confirms isolation (no cross-read) → invites members → role enforcement.
-3. **Real Excel content overlay.** The library shipped in PR #5 is a
-   generic IT-audit starter. The user has a proprietary Excel
-   (`IT_Audit_PBC_Tracker_v2.xlsx`) that should be loaded into templates
-   for production use. Two paths:
-   - One-off: open a template, Settings → Re-sync from Excel, upload it.
-     The structural columns get overlaid.
-   - Permanent: commit the workbook into `data/templates/` and add a
-     "Load workbook" admin action that imports a chosen XLSX into a
-     designated template by slug.
-4. **Front Door + WAF + private endpoints.** Bicep keeps `publicNetworkAccess=Enabled`
-   today (see `infra/workload.bicep`). For higher-stakes audits this
-   should tighten.
-5. **Linked-items picker polish.** Mentioned as a "rough edge" in
-   README from the original codebase — the picker exists but is cramped.
-6. **Activity-log retention.** No auto-purge. If retention policy says
-   "evict access_log rows older than N months," add a periodic Job /
-   trigger to enforce it.
+1. **Rewrite the Playwright e2e suite for multi-tenant.** Still non-blocking in
+   CI with 2 passing + 7 skipped placeholders. Should cover: platform_admin
+   creates two engagements → seeds from templates → confirms isolation → invites
+   members → role enforcement. (The new `rls-isolation` CI job already covers
+   DB-level isolation; e2e would cover the UI/request layer.)
+2. **Front Door + WAF + private endpoints.** Bicep keeps
+   `publicNetworkAccess=Enabled` today (see `infra/workload.bicep`).
+3. **Linked-items picker polish.** The picker exists but is cramped.
+4. **Activity-log retention.** No auto-purge. If retention policy says "evict
+   `access_log` rows older than N months," add a periodic Job / trigger.
+5. **CI action versions.** GitHub flagged the Node 20 actions
+   (`actions/checkout@v4`, `docker/*`) for forced migration to Node 24 on
+   2026-06-02 — bump them before then.
 
-## How to redeploy after merging a future PR
+(Postgres RLS hardening — the prior #1 — is done as of this session.)
 
-Same drill as the one I just walked through:
+## How to redeploy after a future change
 
 ```bash
-gh auth login   # if Cloud Shell is fresh
-SHA=$(curl -s https://api.github.com/repos/mikalesm/audit-tracker/commits/main \
-  | grep -m1 '"sha"' | cut -d'"' -f4 | cut -c1-7)
-gh workflow run deploy.yml -R mikalesm/audit-tracker -f tag=$SHA --ref main
-gh run watch -R mikalesm/audit-tracker
+# from a machine with gh authed (az is NOT needed — deploy.yml does the Azure work)
+gh workflow run deploy.yml -R mikalesm/audit-tracker --ref main
+gh run watch -R mikalesm/audit-tracker $(gh run list -R mikalesm/audit-tracker \
+  --workflow=deploy.yml --limit 1 --json databaseId --jq '.[0].databaseId')
 
-az webapp config container set -g rg-audit-audit1-prod -n app-audit-audit1-prod \
-  --container-image-name ghcr.io/mikalesm/audit-tracker:$SHA
-az webapp restart -g rg-audit-audit1-prod -n app-audit-audit1-prod
-
-sleep 90
 curl -sS https://app-audit-audit1-prod.azurewebsites.net/api/healthz | jq .
 ```
 
-Expected healthz: `{"ok": true, "engine": "postgres", "degraded": false}`.
+`deploy.yml` builds + pushes the image, logs into Azure via OIDC, points the
+App Service at the new image, restarts, and smoke-tests `/api/healthz`.
+Expected: `{"ok": true, "engine": "postgres", "degraded": false}`.
+Migrations run automatically on container start via `scripts/entrypoint.sh` →
+`scripts/migrate-startup.mjs`.
 
 ## Reference: file map
 
-The bits of the codebase the next session will most often touch:
+The bits the next session will most often touch:
 
 ```
 src/
 ├── app/
-│   ├── page.tsx                      # role-branches: ClientDashboard vs Dashboard
-│   ├── pbc/
-│   │   ├── PBCView.tsx               # reads /api/me to know role; passes to detail panel
-│   │   └── PBCDetailPanel.tsx        # Internal Comments tab gated by role
-│   ├── walkthroughs/WalkthroughsView.tsx
-│   ├── settings/SettingsView.tsx     # per-section Save buttons via useDirtyForm
-│   ├── engagements/
-│   │   ├── page.tsx                  # picker + "Platform admin" link for admins
-│   │   ├── new/{page,NewEngagementForm}.tsx
-│   │   └── [slug]/members/
-│   ├── admin/
-│   │   ├── page.tsx                  # overview + storage isolation panel
-│   │   ├── engagements/{page,AdminEngagementsTable}.tsx
-│   │   ├── templates/{page,AdminTemplatesTable}.tsx
-│   │   ├── templates/new/{page,NewTemplateForm}.tsx   # category checkboxes
-│   │   └── users/{page,AdminUsersTable}.tsx
+│   ├── page.tsx / layout.tsx          # server components — wrapped in withEngagement
+│   ├── pbc/ walkthroughs/ settings/   # client views; data via /api/*
+│   ├── engagements/ admin/            # picker, members, platform-admin pages
 │   └── api/
-│       ├── engagements/route.ts                 # POST accepts librarySeed
-│       ├── engagements/[slug]/{switch,members}/route.ts
-│       ├── admin/{engagements,templates,users}/...
-│       └── /* every domain route: requireRole(min) → actor.engagement.id passed to repo */
-├── components/
-│   ├── shell/Shell.tsx               # NAV_GROUPS, responsive header
-│   ├── dashboard/{Dashboard,ClientDashboard,HelpPanel}.tsx
-│   └── ui/card.tsx                   # CardFooter slot for Save buttons
+│       └── /* every engagement-scoped route wraps its body in
+│             withEngagement(actor.engagement.id, …); admin/auth/engagement-
+│             management routes do not (they touch no RLS table) */
 ├── lib/
-│   ├── db.ts                         # AAD token callback for pg.Pool
-│   ├── rbac.ts                       # getActor / requireRole / requirePlatformAdmin
-│   ├── auth.ts                       # NextAuth v5 + dev-bypass + B2B normalization
-│   ├── auth.config.ts                # edge-safe; trustHost: true
-│   ├── blob.ts                       # containerNameFor(engagementId)
-│   ├── forms/useDirtyForm.ts
-│   ├── templates/library.ts          # in-code master library
-│   └── repository/
-│       ├── engagements.ts            # createEngagement, copyTemplateRows, seedFromLibrary
-│       └── /* one per domain, all take engagementId first */
-├── lib/migrations/
-│   ├── 0001_baseline.sql
-│   ├── 0002_users_rbac.sql
-│   ├── 0003_user_upn.sql
-│   ├── 0004_multitenant.sql
-│   └── 0005_engagement_templates.sql
-└── scripts/
-    ├── entrypoint.sh                 # Docker CMD; mints AAD token, runs migrations
-    └── migrate-startup.mjs           # standalone migration runner
-
-docs/
-├── ISOLATION.md                      # multi-tenant boundary contract
-├── PHASE_C_MULTITENANT_PLAN.md       # historical, kept for reference
-└── SESSION-HANDOFF.md                # this file
-
-infra/
-├── main.bicep / workload.bicep       # per-engagement RG; deploy.sh wraps
-├── parameters.acme.json              # template params file
-├── PROD-SMOKE.md                     # post-deploy manual checklist
-└── RUNBOOK.md                        # original deploy runbook
+│   ├── db.ts                          # withEngagement / withBypassRls / getDb,
+│   │                                  #   AsyncLocalStorage scope, PG + pglite adapters
+│   ├── rbac.ts                        # getActor / requireRole / requirePlatformAdmin
+│   ├── auth.ts                        # NextAuth v5 + dev-bypass + B2B normalization
+│   ├── excel/
+│   │   ├── import.ts / export.ts      # workbook round-trip
+│   │   └── sheet-utils.ts             # shared xlsx parsing (importer + drift-check)
+│   ├── templates/library.ts           # in-code master library (transcription of the xlsx)
+│   ├── repository/                    # one file per domain; all take engagementId first,
+│   │                                  #   call getDb() — unchanged by the RLS work
+│   └── migrations/
+│       ├── 0001 … 0006                # baseline → multitenant → templates → walkthrough ctx
+│       ├── 0007_rls.sql               # enable + FORCE RLS, engagement-isolation policies
+│       └── runner.ts                  # sets app.bypass_rls per migration
+├── scripts/
+│   ├── migrate-startup.mjs            # Docker CMD migration runner; sets app.bypass_rls
+│   ├── check-library-sync.ts          # npm run check:library — CI drift-check
+│   └── test-rls-isolation.ts          # npm run test:rls — real-Postgres RLS assertions
+data/templates/IT_Audit_PBC_Tracker_v2.xlsx   # authoritative audit programme
+docs/ISOLATION.md                      # the engagement-isolation contract (incl. RLS)
+.github/workflows/ci.yml               # build + check:library + rls-isolation + e2e
 ```
+
+## Prior sessions (summary)
+
+- **2026-05-13 and earlier (PRs #1–#8):** rescued the live deploy (Azure was
+  silently on in-memory pglite); built multi-tenancy (engagements, memberships,
+  per-engagement `engagement_id` + blob containers); RBAC re-validated per
+  request; platform-admin pages; engagement templates + the in-code library;
+  UX overhaul (role-tailored dashboards, grouped nav, per-section save); seeded
+  the firm's real audit programme from the committed Excel workbook.
 
 ## Open questions to confirm next session
 
-- Do you want the proprietary Excel committed to the repo (option #3 in
-  "Outstanding") or left to per-engagement upload?
-- Do you want Phase G (RLS) before or after rewriting e2e?
-- Is `audit1` going to be archived once a real client engagement exists,
-  or kept as a sandbox?
+- Is `audit1` going to be archived once a real client engagement exists, or
+  kept as a sandbox?
+- e2e rewrite vs. Front Door/WAF — which is the higher priority for the next
+  focused session?
