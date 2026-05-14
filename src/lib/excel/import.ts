@@ -2,9 +2,7 @@ import * as XLSX from 'xlsx';
 import * as fs from 'fs';
 import { getDb } from '@/lib/db';
 import { DEFAULT_TSC_BY_CATEGORY } from '@/lib/templates/library';
-
-// xlsx ESM build does not auto-detect Node fs; wire it up so readFile works.
-XLSX.set_fs(fs);
+import { clean, toInt, sheetToRows } from '@/lib/excel/sheet-utils';
 
 export interface ImportSummary {
   pbc: { added: number; updatedStatic: number; total: number };
@@ -12,46 +10,6 @@ export interface ImportSummary {
   walkthroughs: { added: number; total: number };
   entities: { added: number; total: number };
   sampling: { added: number; total: number };
-}
-
-function clean(v: unknown): string | null {
-  if (v === null || v === undefined) return null;
-  const s = String(v).trim();
-  return s.length === 0 ? null : s;
-}
-function toInt(v: unknown): number | null {
-  const c = clean(v);
-  if (c === null) return null;
-  const n = parseInt(c, 10);
-  return isNaN(n) ? null : n;
-}
-
-function findHeaderRow(sheet: XLSX.WorkSheet, expectedFirstCell: string): number {
-  const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    for (let c = range.s.c; c <= Math.min(range.s.c + 3, range.e.c); c++) {
-      const cell = sheet[XLSX.utils.encode_cell({ r, c })];
-      if (cell && String(cell.v).trim() === expectedFirstCell) {
-        return r;
-      }
-    }
-  }
-  return -1;
-}
-
-function sheetToRows(sheet: XLSX.WorkSheet, headerCell: string): Record<string, unknown>[] {
-  const headerRow = findHeaderRow(sheet, headerCell);
-  if (headerRow < 0) return [];
-  const range = XLSX.utils.decode_range(sheet['!ref']!);
-  const newRange: XLSX.Range = {
-    s: { r: headerRow, c: range.s.c },
-    e: { r: range.e.r, c: range.e.c },
-  };
-  return XLSX.utils.sheet_to_json(sheet, {
-    range: XLSX.utils.encode_range(newRange),
-    defval: null,
-    raw: false,
-  }) as Record<string, unknown>[];
 }
 
 export async function importFromExcelBuffer(engagementId: number, buffer: Buffer): Promise<ImportSummary> {
