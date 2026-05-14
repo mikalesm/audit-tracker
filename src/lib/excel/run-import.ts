@@ -1,6 +1,6 @@
 import path from 'path';
 import { importFromExcelPath } from './import';
-import { closeDb, getDb } from '@/lib/db';
+import { closeDb, getDb, withEngagement } from '@/lib/db';
 import { runMigrations } from '@/lib/migrations/runner';
 
 const file = process.argv[2] || path.join(process.cwd(), 'data', 'templates', 'IT_Audit_PBC_Tracker_v2.xlsx');
@@ -19,7 +19,8 @@ const slug = process.argv[3] || 'audit1';
       process.exitCode = 1;
       return;
     }
-    const summary = await importFromExcelPath(Number(eng.id), file);
+    const engId = Number(eng.id);
+    const summary = await withEngagement(engId, () => importFromExcelPath(engId, file));
     console.log(`Import into engagement '${slug}' (id=${eng.id}):`);
     console.log(JSON.stringify(summary, null, 2));
   } catch (e) {

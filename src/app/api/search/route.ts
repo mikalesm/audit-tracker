@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db';
+import { getDb, withEngagement } from '@/lib/db';
 import { requireRole, isErrorResponse } from '@/lib/rbac';
 
 export const dynamic = 'force-dynamic';
@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
   const eid = actor.engagement!.id;
   const q = req.nextUrl.searchParams.get('q')?.trim();
   if (!q) return NextResponse.json([]);
+  return withEngagement(eid, async () => {
   const db = await getDb();
   const like = `%${q}%`;
   const results: { type: string; id: number; title: string; subtitle?: string; href: string }[] = [];
@@ -58,4 +59,5 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json(results);
+  });
 }

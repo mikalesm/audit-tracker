@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { importFromExcelBuffer } from '@/lib/excel/import';
 import { requireRole, isErrorResponse } from '@/lib/rbac';
+import { withEngagement } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'File is empty or larger than 100 MB.' }, { status: 400 });
     }
     const buf = Buffer.from(await file.arrayBuffer());
-    const summary = await importFromExcelBuffer(actor.engagement!.id, buf);
+    const summary = await withEngagement(actor.engagement!.id, () =>
+      importFromExcelBuffer(actor.engagement!.id, buf)
+    );
     return NextResponse.json({ ok: true, summary });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

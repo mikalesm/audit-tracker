@@ -10,6 +10,7 @@
     "migrate": "tsx scripts/migrate.ts",
     "import": "tsx src/lib/excel/run-import.ts",
     "check:library": "tsx scripts/check-library-sync.ts",
+    "test:rls": "tsx scripts/test-rls-isolation.ts",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --with-deps chromium"
   },

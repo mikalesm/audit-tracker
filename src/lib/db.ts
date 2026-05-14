@@ -1,5 +1,6 @@
-import { Pool, type PoolConfig } from 'pg';
+import { Pool, type PoolClient, type PoolConfig } from 'pg';
 import { PGlite } from '@electric-sql/pglite';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'path';
 import fs from 'fs';
 
@@ -30,7 +31,34 @@ export interface DbAdapter {
   /** Multi-statement DDL with no params. Use for migrations. */
   exec(sql: string): Promise<void>;
   withTx<T>(fn: (tx: DbAdapter) => Promise<T>): Promise<T>;
+  /**
+   * Run `fn` inside a transaction with the given Postgres session variables set
+   * transaction-locally (via set_config(..., true)), and with the resulting
+   * engagement-scoped adapter installed so that getDb() returns it for the
+   * duration. This is what powers Row-Level Security: every request sets
+   * `app.engagement_id` before its first query. See withEngagement / withBypassRls.
+   */
+  runScoped<T>(vars: Record<string, string>, fn: (db: DbAdapter) => Promise<T>): Promise<T>;
   close(): Promise<void>;
+}
+
+// Engagement-scope context. When a request runs inside withEngagement/withBypassRls,
+// the scoped (transaction-bound) adapter is stashed here so getDb() returns it
+// instead of a fresh pooled connection. HMR-safe via globalThis.
+const scope: AsyncLocalStorage<DbAdapter> =
+  ((globalThis as unknown as { __auditTrackerScope?: AsyncLocalStorage<DbAdapter> }).__auditTrackerScope ??=
+    new AsyncLocalStorage<DbAdapter>());
+
+async function applyScopeVars(
+  q: (sql: string, params?: unknown[]) => Promise<unknown>,
+  vars: Record<string, string>,
+): Promise<void> {
+  for (const [k, v] of Object.entries(vars)) {
+    // set_config(name, value, is_local=true) — transaction-scoped, auto-reset
+    // on COMMIT/ROLLBACK, so a pooled connection never leaks scope to the next
+    // checkout. Parameterised, so values can't break out of the statement.
+    await q('SELECT set_config($1, $2, true)', [k, v]);
+  }
 }
 
 class PgPoolAdapter implements DbAdapter {
@@ -47,16 +75,24 @@ class PgPoolAdapter implements DbAdapter {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      const tx: DbAdapter = {
-        query: async <R,>(sql: string, params: unknown[] = []) => {
-          const r = await client.query(sql, params as unknown[]);
-          return { rows: r.rows as R[], rowCount: r.rowCount ?? 0 };
-        },
-        exec: async (sql: string) => { await client.query(sql); },
-        withTx: async () => { throw new Error('Nested transactions not supported'); },
-        close: async () => {},
-      };
+      const tx = makeClientTxAdapter(client);
       const result = await fn(tx);
+      await client.query('COMMIT');
+      return result;
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch {}
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+  async runScoped<T>(vars: Record<string, string>, fn: (db: DbAdapter) => Promise<T>) {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await applyScopeVars((sql, params) => client.query(sql, params as unknown[]), vars);
+      const tx = makeClientTxAdapter(client);
+      const result = await scope.run(tx, () => fn(tx));
       await client.query('COMMIT');
       return result;
     } catch (e) {
@@ -69,6 +105,45 @@ class PgPoolAdapter implements DbAdapter {
   async close() { await this.pool.end(); }
 }
 
+// Adapter bound to a single pg client already inside a transaction. withTx is a
+// passthrough (we're already in a tx); runScoped re-applies vars on the same tx.
+function makeClientTxAdapter(client: PoolClient): DbAdapter {
+  const adapter: DbAdapter = {
+    query: async <R,>(sql: string, params: unknown[] = []) => {
+      const r = await client.query(sql, params as unknown[]);
+      return { rows: r.rows as R[], rowCount: r.rowCount ?? 0 };
+    },
+    exec: async (sql: string) => { await client.query(sql); },
+    withTx: async <T,>(fn: (tx: DbAdapter) => Promise<T>) => fn(adapter),
+    runScoped: async <T,>(vars: Record<string, string>, fn: (db: DbAdapter) => Promise<T>) => {
+      await applyScopeVars((sql, params) => client.query(sql, params as unknown[]), vars);
+      return scope.run(adapter, () => fn(adapter));
+    },
+    close: async () => {},
+  };
+  return adapter;
+}
+
+type PgliteTx = Parameters<Parameters<PGlite['transaction']>[0]>[0];
+
+function makePgliteTxAdapter(tx: PgliteTx): DbAdapter {
+  const adapter: DbAdapter = {
+    query: async <R,>(sql: string, params: unknown[] = []) => {
+      const r = await tx.query<R>(sql, params as unknown[]);
+      const affected = (r as unknown as { affectedRows?: number }).affectedRows;
+      return { rows: r.rows as R[], rowCount: affected ?? r.rows.length };
+    },
+    exec: async (sql: string) => { await tx.exec(sql); },
+    withTx: async <T,>(fn: (t: DbAdapter) => Promise<T>) => fn(adapter),
+    runScoped: async <T,>(vars: Record<string, string>, fn: (db: DbAdapter) => Promise<T>) => {
+      await applyScopeVars((sql, params) => tx.query(sql, params as unknown[]), vars);
+      return scope.run(adapter, () => fn(adapter));
+    },
+    close: async () => {},
+  };
+  return adapter;
+}
+
 class PgliteAdapter implements DbAdapter {
   constructor(private pg: PGlite) {}
   async query<R>(sql: string, params: unknown[] = []) {
@@ -78,18 +153,13 @@ class PgliteAdapter implements DbAdapter {
   }
   async exec(sql: string) { await this.pg.exec(sql); }
   async withTx<T>(fn: (tx: DbAdapter) => Promise<T>) {
+    return this.pg.transaction(async (tx) => fn(makePgliteTxAdapter(tx))) as Promise<T>;
+  }
+  async runScoped<T>(vars: Record<string, string>, fn: (db: DbAdapter) => Promise<T>) {
     return this.pg.transaction(async (tx) => {
-      const adapter: DbAdapter = {
-        query: async <R,>(sql: string, params: unknown[] = []) => {
-          const r = await tx.query<R>(sql, params as unknown[]);
-          const affected = (r as unknown as { affectedRows?: number }).affectedRows;
-          return { rows: r.rows as R[], rowCount: affected ?? r.rows.length };
-        },
-        exec: async (sql: string) => { await tx.exec(sql); },
-        withTx: async () => { throw new Error('Nested transactions not supported'); },
-        close: async () => {},
-      };
-      return fn(adapter);
+      await applyScopeVars((sql, params) => tx.query(sql, params as unknown[]), vars);
+      const adapter = makePgliteTxAdapter(tx);
+      return scope.run(adapter, () => fn(adapter));
     }) as Promise<T>;
   }
   async close() { await this.pg.close(); }
@@ -99,7 +169,21 @@ class PgliteAdapter implements DbAdapter {
 type Slot = { db: DbAdapter | null; opening: Promise<DbAdapter> | null };
 const slot: Slot = ((globalThis as unknown as { __auditTrackerDb?: Slot }).__auditTrackerDb ??= { db: null, opening: null });
 
+/**
+ * The request-aware database handle.
+ *
+ * Inside withEngagement / withBypassRls this returns the transaction-bound,
+ * engagement-scoped adapter so every repository query runs under the right
+ * RLS context. Everywhere else it returns the shared pool/pglite adapter.
+ */
 export function getDb(): Promise<DbAdapter> {
+  const scoped = scope.getStore();
+  if (scoped) return Promise.resolve(scoped);
+  return getBaseDb();
+}
+
+/** The unscoped pool/pglite adapter. Used by migration runners and by getDb(). */
+export function getBaseDb(): Promise<DbAdapter> {
   if (slot.db) return Promise.resolve(slot.db);
   if (slot.opening) return slot.opening;
   slot.opening = openDb().then(d => { slot.db = d; slot.opening = null; return d; }).catch(e => { slot.opening = null; throw e; });
@@ -151,6 +235,38 @@ async function openDb(): Promise<DbAdapter> {
   await pg.waitReady;
   activeEngine = 'pglite';
   return new PgliteAdapter(pg);
+}
+
+/**
+ * Run `fn` with every query scoped to one engagement: opens a transaction,
+ * sets `app.engagement_id`, and installs the scoped adapter so repository
+ * functions (which call getDb()) transparently run under Row-Level Security.
+ *
+ * Every API route / server component that touches an engagement's domain
+ * tables must run inside this. A path that forgets it will — on real Postgres
+ * with RLS forced — simply see zero rows (fail-closed), never another
+ * engagement's data.
+ */
+export async function withEngagement<T>(
+  engagementId: number,
+  fn: (db: DbAdapter) => Promise<T>,
+): Promise<T> {
+  if (!Number.isInteger(engagementId) || engagementId <= 0) {
+    throw new Error(`withEngagement: invalid engagementId ${engagementId}`);
+  }
+  const base = await getBaseDb();
+  return base.runScoped({ 'app.engagement_id': String(engagementId) }, fn);
+}
+
+/**
+ * Run `fn` with RLS bypassed. Reserved for genuinely cross-engagement work:
+ * creating an engagement (reads a template engagement, writes the new one) and
+ * platform-admin aggregates over every engagement. Never reachable from a
+ * normal request path.
+ */
+export async function withBypassRls<T>(fn: (db: DbAdapter) => Promise<T>): Promise<T> {
+  const base = await getBaseDb();
+  return base.runScoped({ 'app.bypass_rls': 'on' }, fn);
 }
 
 export async function closeDb(): Promise<void> {

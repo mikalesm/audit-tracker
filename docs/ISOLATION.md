@@ -76,11 +76,26 @@ uniqueness on `(engagement_id, num)` for PBC / access / walkthroughs /
 entities / sampling lets two engagements both have a "#1" without
 collision.
 
-A migration (`0005_rls.sql`, *not yet enabled*) is planned that turns on
-Postgres Row-Level Security as a belt-and-braces defense — every query
-inside a request would `SET LOCAL app.engagement_id = N` and RLS policies
-would block reads that don't match. Until then the application-level
-filtering is the enforcement.
+Row-Level Security (migration `0007_rls.sql`) is the belt-and-braces second
+layer behind that filtering. Every domain table has RLS **enabled and
+forced**; the policy admits a row only when its `engagement_id` equals the
+`app.engagement_id` Postgres session variable. `withEngagement(id, fn)` in
+`src/lib/db.ts` opens a transaction, sets that variable transaction-locally,
+and runs the request inside it — so every API route and server component
+that touches engagement data is scoped. A path that forgets the scope sees
+**zero rows** (fail-closed), never another engagement's data. Cross-engagement
+writes are rejected by the policy's `WITH CHECK`.
+
+`withBypassRls` is the explicit, request-unreachable escape hatch for
+genuinely cross-engagement work — creating an engagement (it reads a
+template and writes the new engagement), platform-admin aggregates, and the
+migration runners.
+
+`FORCE ROW LEVEL SECURITY` is required because the application connects as
+the same Postgres principal that owns the tables; without FORCE the owner
+bypasses RLS. Note that pglite (local dev, and the CI Docker smoke test)
+does **not** enforce RLS — the CI `rls-isolation` job verifies enforcement
+against a real Postgres service container.
 
 ### Storage layer (`src/lib/blob.ts`)
 

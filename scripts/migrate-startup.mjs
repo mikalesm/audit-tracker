@@ -53,6 +53,10 @@ async function main() {
   const pool = await makePool();
   const client = await pool.connect();
   try {
+    // Migrations run with RLS bypassed: 0007 enables RLS, and any future data
+    // migration touching a domain table would otherwise be filtered to nothing.
+    // Session-scoped on this dedicated client, so it covers every migration.
+    await client.query("SET app.bypass_rls = 'on'");
     await client.query(`
       CREATE TABLE IF NOT EXISTS _migrations (
         id SERIAL PRIMARY KEY,

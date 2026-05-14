@@ -5,6 +5,7 @@ import ClientSessionProvider from '@/components/shell/SessionProvider';
 import { getSettings } from '@/lib/repository/settings';
 import { ensureSchema } from '@/lib/bootstrap';
 import { getActor } from '@/lib/rbac';
+import { withEngagement } from '@/lib/db';
 import type { EngagementSettings } from '@/types';
 
 export const metadata: Metadata = {
@@ -31,7 +32,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   try {
     const actor = await getActor();
     if (actor?.engagement) {
-      settings = await getSettings(actor.engagement.id);
+      const engagementId = actor.engagement.id;
+      settings = await withEngagement(engagementId, () => getSettings(engagementId));
     }
   } catch {
     // ensureSchema may have failed; render a bare shell anyway so /signin still works.

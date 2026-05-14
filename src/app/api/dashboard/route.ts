@@ -7,6 +7,7 @@ import { recentPBCActivityWithTitles } from '@/lib/repository/activity';
 import { upcomingWalkthroughs } from '@/lib/repository/walkthroughs';
 import { entitiesInScope } from '@/lib/repository/entities';
 import { requireRole, isErrorResponse } from '@/lib/rbac';
+import { withEngagement } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,7 @@ export async function GET() {
   const actor = await requireRole('client_reviewer');
   if (isErrorResponse(actor)) return actor;
   const eid = actor.engagement!.id;
+  return withEngagement(eid, async () => {
 
   const [status, all, categoryStatus, priorityCounts, outstandingHigh, receivedTrend, overdue, activity, upcoming, scope] =
     await Promise.all([
@@ -64,5 +66,6 @@ export async function GET() {
       status: u.status,
     })),
     entityScope: scope,
+  });
   });
 }

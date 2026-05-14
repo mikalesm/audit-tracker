@@ -1,4 +1,4 @@
-import { getDb } from '@/lib/db';
+import { getDb, withBypassRls } from '@/lib/db';
 import type { Role } from '@/lib/repository/users';
 import {
   LIBRARY,
@@ -78,39 +78,43 @@ export async function listEngagements(): Promise<Engagement[]> {
 export async function listAllEngagementsWithCounts(
   opts: { kind?: 'client' | 'template' | 'all' } = {},
 ): Promise<Array<Engagement & { memberCount: number; itemCount: number; categories: string[] }>> {
-  const db = await getDb();
   const kind = opts.kind ?? 'client';
   const where =
     kind === 'template' ? 'WHERE e.is_template = TRUE'
     : kind === 'all'    ? ''
     :                     'WHERE e.is_template = FALSE';
-  const r = await db.query<EngagementRow & {
-    member_count: string | number;
-    item_count: string | number;
-    categories: string[] | string | null;
-  }>(
-    `SELECT e.*,
-            (SELECT COUNT(*) FROM engagement_memberships m WHERE m.engagement_id = e.id) AS member_count,
-            (SELECT COUNT(*) FROM pbc_items p WHERE p.engagement_id = e.id) AS item_count,
-            COALESCE(
-              (SELECT array_agg(DISTINCT category ORDER BY category)
-                 FROM pbc_items WHERE engagement_id = e.id),
-              ARRAY[]::text[]
-            ) AS categories
-       FROM engagements e
-       ${where}
-      ORDER BY e.status, e.created_at DESC`
-  );
-  return r.rows.map((row) => ({
-    ...toEngagement(row),
-    memberCount: Number(row.member_count),
-    itemCount: Number(row.item_count),
-    categories: Array.isArray(row.categories)
-      ? row.categories
-      : typeof row.categories === 'string'
-        ? (() => { try { return JSON.parse(row.categories as string); } catch { return []; } })()
-        : [],
-  }));
+  // Aggregates over pbc_items across every engagement — inherently
+  // cross-engagement, so it runs with RLS bypassed. Only reachable from
+  // platform-admin pages / routes.
+  return withBypassRls(async (db) => {
+    const r = await db.query<EngagementRow & {
+      member_count: string | number;
+      item_count: string | number;
+      categories: string[] | string | null;
+    }>(
+      `SELECT e.*,
+              (SELECT COUNT(*) FROM engagement_memberships m WHERE m.engagement_id = e.id) AS member_count,
+              (SELECT COUNT(*) FROM pbc_items p WHERE p.engagement_id = e.id) AS item_count,
+              COALESCE(
+                (SELECT array_agg(DISTINCT category ORDER BY category)
+                   FROM pbc_items WHERE engagement_id = e.id),
+                ARRAY[]::text[]
+              ) AS categories
+         FROM engagements e
+         ${where}
+        ORDER BY e.status, e.created_at DESC`
+    );
+    return r.rows.map((row) => ({
+      ...toEngagement(row),
+      memberCount: Number(row.member_count),
+      itemCount: Number(row.item_count),
+      categories: Array.isArray(row.categories)
+        ? row.categories
+        : typeof row.categories === 'string'
+          ? (() => { try { return JSON.parse(row.categories as string); } catch { return []; } })()
+          : [],
+    }));
+  });
 }
 
 export async function setEngagementStatus(slug: string, status: EngagementStatus): Promise<Engagement | null> {
@@ -170,8 +174,9 @@ export async function createEngagement(input: CreateEngagementInput): Promise<En
   if (!isValidSlug(input.slug)) {
     throw new Error('invalid slug: lowercase letters, digits, hyphens; 3-32 chars; cannot start or end with -');
   }
-  const db = await getDb();
-  return db.withTx(async (tx) => {
+  // Spans two engagements (reads a template, writes the new engagement), so it
+  // runs with RLS bypassed. Restricted to platform_admin at the route layer.
+  return withBypassRls(async (tx) => {
     const r = await tx.query<EngagementRow>(
       `INSERT INTO engagements (slug, name, client_name, fiscal_year, description, is_template, created_by_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)

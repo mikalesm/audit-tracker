@@ -4,6 +4,7 @@ import ClientDashboard from '@/components/dashboard/ClientDashboard';
 import { getSettings } from '@/lib/repository/settings';
 import { getActor } from '@/lib/rbac';
 import { listEngagementsForUser } from '@/lib/repository/engagements';
+import { withEngagement } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +17,8 @@ export default async function Page() {
     if (list.length === 1) redirect('/engagements');
     redirect('/engagements');
   }
-  const settings = await getSettings(actor.engagement.id);
+  const engagementId = actor.engagement.id;
+  const settings = await withEngagement(engagementId, () => getSettings(engagementId));
 
   // Client roles get a guided dashboard. Auditors keep the analytical one.
   if (actor.role === 'client_owner' || actor.role === 'client_reviewer') {
