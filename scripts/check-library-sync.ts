@@ -13,6 +13,11 @@
 //                          workbook's Walkthroughs sheet has no such columns.
 //   - sampling method   — library.ts blanks it on purpose (per-engagement
 //                          decision); the workbook carries a default value.
+//   - the Endpoint & MDM, Security Posture, Cloud Security Posture and AI
+//                          Governance PBC categories — these are authored in
+//                          library.ts beyond the workbook's original 10
+//                          categories, so they are excluded from the PBC check.
+//   - the PBC `scope` / `templateKey` fields — library-only, no workbook source.
 
 import path from 'path';
 import * as XLSX from 'xlsx';
@@ -99,8 +104,18 @@ function main(): void {
     return;
   }
 
+  // Categories present in the authoritative workbook. PBC items in categories
+  // added beyond the workbook (the four security categories) are authored in
+  // library.ts and are not part of the drift check.
+  const WORKBOOK_PBC_CATEGORIES = new Set([
+    'Governance', 'Entities & Systems', 'Access Management', 'Change Management',
+    'IT Operations', 'Third Parties', 'Licensing', 'IT Spend', 'SOC 2 Readiness',
+    'Physical & Environmental',
+  ]);
+  const workbookPbc = LIBRARY.pbc.filter((i) => WORKBOOK_PBC_CATEGORIES.has(i.category));
+
   const problems: string[] = [
-    ...checkDataset('PBC', 'PBC List', wb, LIBRARY.pbc, [
+    ...checkDataset('PBC', 'PBC List', wb, workbookPbc, [
       { lib: 'category', col: 'Category' },
       { lib: 'itemRequested', col: 'Item Requested' },
       { lib: 'whyPurpose', col: 'Why / Audit Purpose' },

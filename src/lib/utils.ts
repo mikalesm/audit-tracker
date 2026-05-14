@@ -56,7 +56,8 @@ export const STATUSES = ['Not Started', 'Requested', 'In Progress', 'Received', 
 export const PRIORITIES = ['High', 'Medium-High', 'Medium', 'Low-Medium', 'Low'] as const;
 export const CATEGORIES = [
   'Governance', 'Entities & Systems', 'Access Management', 'Change Management',
-  'IT Operations', 'Third Parties', 'Licensing', 'IT Spend', 'SOC 2 Readiness',
+  'IT Operations', 'Endpoint & MDM', 'Security Posture', 'Cloud Security Posture',
+  'AI Governance', 'Third Parties', 'Licensing', 'IT Spend', 'SOC 2 Readiness',
   'Physical & Environmental',
 ] as const;
 export const ACCESS_STATUSES = ['Not Requested', 'Requested', 'Provisioned', 'Revoked', 'N/A'] as const;

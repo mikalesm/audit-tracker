@@ -1,22 +1,21 @@
 'use client';
 import * as React from 'react';
-import { HelpCircle, X } from 'lucide-react';
+import { HelpCircle, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
- * Slim "what is this page?" banner that sits at the top of a list surface
- * (PBC, walkthroughs, access, entities, sampling). Dismissible per-surface;
- * choice is remembered in localStorage so returning users aren't nagged.
+ * Quiet, collapsible "what is this page?" strip at the top of a list surface
+ * (PBC, walkthroughs, access, entities, sampling). Collapsed by default so it
+ * never competes with the data; one click reveals the explainer. The
+ * open/closed choice is remembered per-surface in localStorage.
  *
- * Use this on list views to give first-time users context without forcing
- * them to read a help page. The richer `HelpPanel` is the collapsible
- * step-by-step variant used on the dashboards.
+ * The richer `HelpPanel` is the step-by-step variant used on the dashboards.
  */
 export default function HelpStrip({
   title,
   children,
   storageKey,
-  tone = 'info',
+  tone = 'muted',
   className,
 }: {
   title: string;
@@ -26,47 +25,49 @@ export default function HelpStrip({
   tone?: 'info' | 'muted';
   className?: string;
 }) {
-  const [dismissed, setDismissed] = React.useState(false);
-  const [ready, setReady] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
 
   React.useEffect(() => {
     try {
+      // Migrate the old `1 = dismissed` value to the new collapsed default.
       const v = localStorage.getItem(`helpstrip:${storageKey}`);
-      setDismissed(v === '1');
+      if (v === 'open') setOpen(true);
     } catch {}
-    setReady(true);
   }, [storageKey]);
 
-  function dismiss() {
-    setDismissed(true);
-    try { localStorage.setItem(`helpstrip:${storageKey}`, '1'); } catch {}
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    try { localStorage.setItem(`helpstrip:${storageKey}`, next ? 'open' : 'closed'); } catch {}
   }
-
-  if (!ready || dismissed) return null;
 
   return (
     <div className={cn(
-      'rounded-lg border px-4 py-3 flex items-start gap-3',
-      tone === 'info'
-        ? 'border-blue-200 bg-blue-50/60 dark:bg-blue-950/30 dark:border-blue-900'
-        : 'border-rule bg-canvas dark:bg-navy-900 dark:border-navy-700',
+      'rounded-lg border border-rule bg-surface dark:bg-navy-900 dark:border-navy-700',
+      tone === 'info' && open && 'border-navy-200 dark:border-navy-700',
       className,
     )}>
-      <HelpCircle className={cn(
-        'w-4 h-4 mt-0.5 shrink-0',
-        tone === 'info' ? 'text-blue-700 dark:text-blue-300' : 'text-ink-500'
-      )} />
-      <div className="flex-1 min-w-0">
-        <div className="text-[12.5px] font-semibold tracking-tight leading-tight mb-0.5">{title}</div>
-        <div className="text-[12px] text-ink-700 dark:text-slate-300 leading-relaxed">{children}</div>
-      </div>
       <button
-        onClick={dismiss}
-        className="p-1 -mr-1 rounded hover:bg-white/60 dark:hover:bg-navy-800 text-ink-500"
-        aria-label="Dismiss help"
+        type="button"
+        onClick={toggle}
+        className="w-full flex items-center gap-2 px-3.5 py-2 text-left group"
+        aria-expanded={open}
       >
-        <X className="w-3.5 h-3.5" />
+        <HelpCircle className="w-3.5 h-3.5 shrink-0 text-ink-300 group-hover:text-ink-500 dark:text-slate-500" />
+        <span className="text-[12px] font-medium text-ink-700 dark:text-slate-300">{title}</span>
+        {!open && (
+          <span className="text-[12px] text-ink-300 dark:text-slate-500 hidden sm:inline">— quick explainer</span>
+        )}
+        <ChevronDown className={cn(
+          'w-3.5 h-3.5 ml-auto shrink-0 text-ink-300 transition-transform',
+          open && 'rotate-180',
+        )} />
       </button>
+      {open && (
+        <div className="px-3.5 pb-3 pl-9 text-[12px] text-ink-500 dark:text-slate-400 leading-relaxed">
+          {children}
+        </div>
+      )}
     </div>
   );
 }

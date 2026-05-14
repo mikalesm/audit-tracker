@@ -29,10 +29,10 @@ interface DashboardData {
 
 export default function Dashboard({ settings }: { settings: EngagementSettings }) {
   const [data, setData] = React.useState<DashboardData | null>(null);
-  const { entity, entities } = useEntityFilter();
+  const { entityId, entities } = useEntityFilter();
   const selectedEntity: Entity | null = React.useMemo(
-    () => entity ? entities.find(e => (e.legalEntity || `Entity #${e.num}`) === entity) ?? null : null,
-    [entity, entities]
+    () => entityId != null ? entities.find(e => e.id === entityId) ?? null : null,
+    [entityId, entities]
   );
 
   React.useEffect(() => {
@@ -41,8 +41,8 @@ export default function Dashboard({ settings }: { settings: EngagementSettings }
 
   if (!data) {
     return (
-      <div className="px-6 py-6 grid grid-cols-6 gap-4">
-        {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-[100px] skeleton" />)}
+      <div className="px-6 py-7 max-w-[1500px] mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-[104px] skeleton rounded-xl" />)}
       </div>
     );
   }
@@ -50,16 +50,16 @@ export default function Dashboard({ settings }: { settings: EngagementSettings }
   const firstRun = data.kpi.total === 0;
 
   return (
-    <div className="px-6 py-6 max-w-[1500px] mx-auto">
+    <div className="px-6 py-7 max-w-[1500px] mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-[20px] font-semibold tracking-tight">Engagement overview</h1>
-          <p className="text-[12.5px] text-ink-500 dark:text-slate-400 mt-0.5">
+          <h1 className="text-[21px] font-semibold tracking-tight">Engagement overview</h1>
+          <p className="text-[12.5px] text-ink-500 dark:text-slate-400 mt-1">
             {settings.clientName} · {settings.auditPeriod} · Lead: {settings.leadAuditor}
           </p>
         </div>
-        <div className="flex items-center gap-1.5 no-print">
+        <div className="flex items-center gap-2 no-print">
           <Link href="/reports"><Button variant="secondary" size="sm"><FileText className="w-3.5 h-3.5" /> Export PDF</Button></Link>
           <a href="/api/export"><Button variant="secondary" size="sm"><Download className="w-3.5 h-3.5" /> Export Excel</Button></a>
           <Button variant="secondary" size="sm" onClick={() => window.print()}><Printer className="w-3.5 h-3.5" /> Print</Button>
@@ -68,17 +68,17 @@ export default function Dashboard({ settings }: { settings: EngagementSettings }
 
       {/* First-run hero — only when the engagement has no PBC items yet */}
       {firstRun && (
-        <Card className="mb-4 border-blue-200 dark:border-blue-900 bg-blue-50/40 dark:bg-blue-950/20">
-          <CardBody>
+        <Card className="mb-5">
+          <CardBody className="!pt-5">
             <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center shrink-0">
-                <FileText className="w-5 h-5 text-blue-700 dark:text-blue-300" />
+              <div className="w-10 h-10 rounded-lg bg-navy-50 dark:bg-navy-800 flex items-center justify-center shrink-0">
+                <FileText className="w-5 h-5 text-navy-700 dark:text-navy-300" />
               </div>
               <div className="flex-1">
                 <div className="text-[14px] font-semibold tracking-tight mb-1">
                   This engagement is empty — let&apos;s give it some content
                 </div>
-                <p className="text-[12.5px] text-ink-700 dark:text-slate-300 leading-relaxed mb-3">
+                <p className="text-[12.5px] text-ink-500 dark:text-slate-400 leading-relaxed mb-3">
                   No PBC items, walkthroughs, or access requests yet. Pick one of these
                   to seed the engagement:
                 </p>
@@ -104,15 +104,15 @@ export default function Dashboard({ settings }: { settings: EngagementSettings }
 
       {/* Entity scope panel — only when an entity filter is active */}
       {selectedEntity && (
-        <Card className="mb-4">
+        <Card className="mb-5">
           <CardBody className="!py-4">
             <div className="flex items-start gap-4">
-              <div className="w-9 h-9 rounded bg-navy-50 dark:bg-navy-800 flex items-center justify-center shrink-0">
+              <div className="w-9 h-9 rounded-lg bg-navy-50 dark:bg-navy-800 flex items-center justify-center shrink-0">
                 <Building2 className="w-4 h-4 text-navy-700 dark:text-navy-300" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[10.5px] uppercase tracking-wider font-semibold text-ink-500 dark:text-slate-400">Entity scope</span>
+                  <span className="section-label">Entity scope</span>
                   {selectedEntity.inScope === 'Y' && <Badge tone="success">In scope</Badge>}
                   {selectedEntity.inScope === 'N' && <Badge tone="neutral">Out of scope</Badge>}
                 </div>
@@ -144,12 +144,12 @@ export default function Dashboard({ settings }: { settings: EngagementSettings }
       <KPIStrip kpi={data.kpi} trend={data.receivedTrend} entityScope={data.entityScope} />
 
       {/* Two-column layout */}
-      <div className="grid grid-cols-12 gap-4 mt-4">
+      <div className="grid grid-cols-12 gap-5 mt-5">
         <div className="col-span-12 lg:col-span-7">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle>Status by Category</CardTitle>
+                <CardTitle>Status by category</CardTitle>
                 <span className="text-[11px] text-ink-500">Sorted by % outstanding</span>
               </div>
             </CardHeader>
@@ -159,10 +159,10 @@ export default function Dashboard({ settings }: { settings: EngagementSettings }
           </Card>
         </div>
 
-        <div className="col-span-12 lg:col-span-5 space-y-4">
+        <div className="col-span-12 lg:col-span-5 space-y-5">
           <Card>
             <CardHeader>
-              <CardTitle>Status by Priority</CardTitle>
+              <CardTitle>Status by priority</CardTitle>
             </CardHeader>
             <CardBody>
               <PriorityDonut data={data.priorityCounts} />
@@ -198,7 +198,7 @@ export default function Dashboard({ settings }: { settings: EngagementSettings }
       </div>
 
       {/* Renewals & deadlines + Coming up */}
-      <div className="grid grid-cols-12 gap-4 mt-4">
+      <div className="grid grid-cols-12 gap-5 mt-5">
         <div className="col-span-12 lg:col-span-7">
           <Card>
             <CardHeader>

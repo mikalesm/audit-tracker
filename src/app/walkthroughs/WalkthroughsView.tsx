@@ -6,7 +6,7 @@ import { InlineDate, InlineSelect, InlineText } from '@/components/tables/Inline
 import { StatusPill, Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SavedFlash, useSaveIndicator } from '@/components/tables/SavedIndicator';
-import { Calendar, List as ListIcon, X, Clock, Users } from 'lucide-react';
+import { Calendar, List as ListIcon, X, Clock, Users, AlertTriangle } from 'lucide-react';
 import HelpStrip from '@/components/ui/HelpStrip';
 import ViewToggle, { useViewMode } from '@/components/tables/ViewToggle';
 import ContextSection from '@/components/ui/ContextSection';
@@ -46,18 +46,18 @@ export default function WalkthroughsView() {
   const isAuditor = role === 'auditor' || role === 'auditor_lead';
 
   return (
-    <div className="px-6 py-6 max-w-[1500px] mx-auto space-y-4">
+    <div className="px-6 py-7 max-w-[1500px] mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[18px] font-semibold tracking-tight">Walkthroughs</h1>
-          <p className="text-[12px] text-ink-500 dark:text-slate-400 mt-0.5">{items.length} sessions</p>
+          <h1 className="text-[21px] font-semibold tracking-tight">Walkthroughs</h1>
+          <p className="text-[12.5px] text-ink-500 dark:text-slate-400 mt-1">{items.length} sessions</p>
         </div>
         <div className="flex items-center gap-2">
           <SavedFlash savedKey={savedKey} />
           {view === 'list' && <ViewToggle mode={viewMode} onChange={setViewMode} />}
-          <div className="flex items-center rounded-md border border-rule dark:border-navy-700 p-0.5">
-            <button onClick={() => setView('list')} className={`px-2 h-7 inline-flex items-center gap-1 text-[12px] rounded ${view === 'list' ? 'bg-canvas dark:bg-navy-800' : ''}`}><ListIcon className="w-3 h-3" /> List</button>
-            <button onClick={() => setView('week')} className={`px-2 h-7 inline-flex items-center gap-1 text-[12px] rounded ${view === 'week' ? 'bg-canvas dark:bg-navy-800' : ''}`}><Calendar className="w-3 h-3" /> Week</button>
+          <div className="flex items-center rounded-md border border-rule p-0.5 dark:border-navy-700">
+            <button onClick={() => setView('list')} className={`px-2 h-8 inline-flex items-center gap-1 text-[12px] rounded ${view === 'list' ? 'bg-canvas dark:bg-navy-800' : 'text-ink-500'}`}><ListIcon className="w-3.5 h-3.5" /> List</button>
+            <button onClick={() => setView('week')} className={`px-2 h-8 inline-flex items-center gap-1 text-[12px] rounded ${view === 'week' ? 'bg-canvas dark:bg-navy-800' : 'text-ink-500'}`}><Calendar className="w-3.5 h-3.5" /> Week</button>
           </div>
         </div>
       </div>
@@ -83,7 +83,7 @@ export default function WalkthroughsView() {
       )}
 
       {view === 'list' && viewMode === 'table' && (
-        <div className="rounded-lg border border-rule dark:border-navy-700 bg-white dark:bg-navy-950 overflow-hidden">
+        <div className="rounded-xl border border-rule dark:border-navy-700 bg-white dark:bg-navy-950 shadow-card dark:shadow-none overflow-hidden">
           <table className="data-table">
             <thead>
               <tr>
@@ -192,7 +192,7 @@ function CardList({
           <button
             key={w.id}
             onClick={() => onOpen(w.id)}
-            className="text-left rounded-lg border border-rule dark:border-navy-700 bg-white dark:bg-navy-950 p-4 transition-all hover:border-navy-400 hover:shadow-sm dark:hover:border-navy-500"
+            className="text-left rounded-xl border border-rule dark:border-navy-700 bg-white shadow-card dark:bg-navy-950 dark:shadow-none p-4 transition-all hover:border-navy-300 hover:shadow-card-hover dark:hover:border-navy-500"
           >
             <div className="flex items-start justify-between gap-2 mb-1">
               <div className="text-[10.5px] uppercase tracking-wider text-ink-500 dark:text-slate-400 font-mono">
@@ -232,7 +232,9 @@ function CardList({
                 </span>
               )}
               {missing && (
-                <span className="ml-auto text-amber-700 dark:text-amber-300 text-[10.5px]">⚠ missing context</span>
+                <span className="ml-auto inline-flex items-center gap-1 text-amber-700 dark:text-amber-300 text-[10.5px]">
+                  <AlertTriangle className="w-3 h-3" /> Needs context
+                </span>
               )}
             </div>
           </button>
@@ -286,7 +288,6 @@ function WalkthroughDetailDialog({ item, isAuditor, onClose, onPatch }: {
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           <ContextSection
             label="What this session covers"
-            caption="A paragraph the client can read before the session — sets expectations."
             audience="client"
           >
             {isAuditor ? (
@@ -305,7 +306,6 @@ function WalkthroughDetailDialog({ item, isAuditor, onClose, onPatch }: {
 
           <ContextSection
             label="What the auditor wants to confirm"
-            caption="The control objective — what success looks like at the end of the session."
             audience="both"
           >
             {isAuditor ? (
@@ -324,7 +324,6 @@ function WalkthroughDetailDialog({ item, isAuditor, onClose, onPatch }: {
 
           <ContextSection
             label="Topics we plan to cover"
-            caption="The agenda — short bullets are fine."
             audience="client"
           >
             <InlineText
@@ -337,7 +336,6 @@ function WalkthroughDetailDialog({ item, isAuditor, onClose, onPatch }: {
 
           <ContextSection
             label="Who should attend"
-            caption="Roles + names from the client side."
             audience="client"
           >
             <InlineText
@@ -373,7 +371,6 @@ function WalkthroughDetailDialog({ item, isAuditor, onClose, onPatch }: {
 
           <ContextSection
             label="Notes (shared)"
-            caption="Visible to both client and auditor."
             audience="both"
           >
             <InlineText value={item.notes} onCommit={v => onPatch({ notes: v })} placeholder="Add a note…" multiline />

@@ -1,4 +1,4 @@
-import { getDb, withBypassRls } from '@/lib/db';
+import { getDb, withBypassRls, type DbAdapter } from '@/lib/db';
 import type { Role } from '@/lib/repository/users';
 import {
   LIBRARY,
@@ -224,30 +224,31 @@ export async function createEngagement(input: CreateEngagementInput): Promise<En
  * starts clean.
  */
 async function seedFromLibrary(
-  tx: { query: (sql: string, params: unknown[]) => Promise<{ rowCount: number }> },
+  tx: DbAdapter,
   engagementId: number,
   selection: LibrarySelection,
 ): Promise<void> {
-  // PBC items, filtered by category. Use insertion order so num is stable.
-  const picked = selection.pbcCategories as PBCCategory[];
-  if (picked.length > 0) {
-    const allowed = new Set<PBCCategory>(picked);
-    const filtered = LIBRARY.pbc.filter((i) => allowed.has(i.category));
+  // Entities first — per-entity PBC items below need their ids.
+  const entityRows: SeededEntity[] = [];
+  if (selection.includeEntities) {
     let n = 0;
-    for (const item of filtered) {
+    for (const e of LIBRARY.entities) {
       n += 1;
-      await tx.query(
-        `INSERT INTO pbc_items (
-            engagement_id, num, category, item_requested, why_purpose, format_expected,
-            priority, tsc_mapping
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
-        [
-          engagementId, n, item.category, item.itemRequested, item.whyPurpose,
-          item.formatExpected, item.priority, JSON.stringify(item.tscMapping),
-        ]
+      const r = await tx.query<{ id: number }>(
+        `INSERT INTO entities (
+            engagement_id, num, legal_entity, country_location, it_model,
+            key_applications, hosting, headcount, in_scope, rationale
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          RETURNING id`,
+        [engagementId, n, e.legalEntity, e.countryLocation, e.itModel,
+         e.keyApplications, e.hosting, e.headcount, e.inScope, e.rationale]
       );
+      entityRows.push({ id: Number(r.rows[0].id), inScope: e.inScope });
     }
   }
+
+  // PBC items — group items once, per-entity items once per in-scope entity.
+  await seedPbcItems(tx, engagementId, entityRows, selection);
 
   if (selection.includeAccess) {
     let n = 0;
@@ -278,21 +279,6 @@ async function seedFromLibrary(
     }
   }
 
-  if (selection.includeEntities) {
-    let n = 0;
-    for (const e of LIBRARY.entities) {
-      n += 1;
-      await tx.query(
-        `INSERT INTO entities (
-            engagement_id, num, legal_entity, country_location, it_model,
-            key_applications, hosting, headcount, in_scope, rationale
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [engagementId, n, e.legalEntity, e.countryLocation, e.itModel,
-         e.keyApplications, e.hosting, e.headcount, e.inScope, e.rationale]
-      );
-    }
-  }
-
   if (selection.includeSampling) {
     let n = 0;
     for (const s of LIBRARY.sampling) {
@@ -308,6 +294,54 @@ async function seedFromLibrary(
   }
 }
 
+/** A library entity after insertion, with the id needed to scope PBC items. */
+export interface SeededEntity {
+  id: number;
+  inScope: 'Y' | 'N' | null;
+}
+
+/**
+ * Insert the LIBRARY PBC items for the selected categories. `scope: 'group'`
+ * items get one row (`entity_id` null); `scope: 'entity'` items get one row
+ * per in-scope entity (`entity_id` set). With no in-scope entities, per-entity
+ * items fall back to a single group-wide row. `num` is one running counter so
+ * the per-engagement uniqueness index holds.
+ *
+ * Exported so the demo re-seed script can reuse it against existing entities.
+ */
+export async function seedPbcItems(
+  tx: DbAdapter,
+  engagementId: number,
+  entityRows: SeededEntity[],
+  selection: Pick<LibrarySelection, 'pbcCategories'>,
+): Promise<void> {
+  const picked = selection.pbcCategories as PBCCategory[];
+  if (picked.length === 0) return;
+  const allowed = new Set<PBCCategory>(picked);
+  const filtered = LIBRARY.pbc.filter((i) => allowed.has(i.category));
+  const inScopeIds = entityRows.filter(e => e.inScope === 'Y').map(e => e.id);
+
+  let n = 0;
+  for (const item of filtered) {
+    const targets: (number | null)[] =
+      item.scope === 'entity' && inScopeIds.length > 0 ? inScopeIds : [null];
+    for (const entityId of targets) {
+      n += 1;
+      await tx.query(
+        `INSERT INTO pbc_items (
+            engagement_id, num, category, item_requested, why_purpose, format_expected,
+            priority, tsc_mapping, entity_id, template_key
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)`,
+        [
+          engagementId, n, item.category, item.itemRequested, item.whyPurpose,
+          item.formatExpected, item.priority, JSON.stringify(item.tscMapping),
+          entityId, item.templateKey,
+        ]
+      );
+    }
+  }
+}
+
 /**
  * Copy PBC/access/walkthroughs/entities/sampling rows from one engagement
  * into another. Per-client fields are reset to defaults so the destination
@@ -315,23 +349,58 @@ async function seedFromLibrary(
  * preserved. Activity log + evidence files are never copied.
  */
 async function copyTemplateRows(
-  tx: { query: (sql: string, params: unknown[]) => Promise<{ rowCount: number }> },
+  tx: DbAdapter,
   sourceId: number,
   targetId: number,
 ): Promise<void> {
-  // PBC items — preserve everything except per-client status/dates/owner/notes.
-  await tx.query(
-    `INSERT INTO pbc_items (
-        engagement_id, num, category, item_requested, why_purpose, format_expected,
-        priority, tsc_mapping, internal_comments
-      )
-      SELECT $1, num, category, item_requested, why_purpose, format_expected,
-             priority, tsc_mapping, internal_comments
-        FROM pbc_items
-       WHERE engagement_id = $2
-       ORDER BY num`,
-    [targetId, sourceId]
+  // Entities first — copy row-by-row so we can map source entity ids to the
+  // new ids and translate per-entity PBC rows below.
+  const srcEntities = await tx.query<{
+    id: number; num: number; legal_entity: string | null; country_location: string | null;
+    it_model: string | null; key_applications: string | null; hosting: string | null;
+    headcount: number | null; in_scope: string | null; rationale: string | null;
+  }>(
+    `SELECT * FROM entities WHERE engagement_id = $1 ORDER BY num`,
+    [sourceId]
   );
+  const entityIdMap = new Map<number, number>();
+  for (const e of srcEntities.rows) {
+    const r = await tx.query<{ id: number }>(
+      `INSERT INTO entities (
+          engagement_id, num, legal_entity, country_location, it_model,
+          key_applications, hosting, headcount, in_scope, rationale
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING id`,
+      [targetId, e.num, e.legal_entity, e.country_location, e.it_model,
+       e.key_applications, e.hosting, e.headcount, e.in_scope, e.rationale]
+    );
+    entityIdMap.set(Number(e.id), Number(r.rows[0].id));
+  }
+
+  // PBC items — preserve templated columns + scope; translate entity_id.
+  const srcPbc = await tx.query<{
+    num: number; category: string; item_requested: string; why_purpose: string;
+    format_expected: string; priority: string; tsc_mapping: unknown;
+    internal_comments: string | null; entity_id: number | null; template_key: string | null;
+  }>(
+    `SELECT num, category, item_requested, why_purpose, format_expected, priority,
+            tsc_mapping, internal_comments, entity_id, template_key
+       FROM pbc_items WHERE engagement_id = $1 ORDER BY num`,
+    [sourceId]
+  );
+  for (const p of srcPbc.rows) {
+    const mappedEntity = p.entity_id === null ? null : entityIdMap.get(Number(p.entity_id)) ?? null;
+    await tx.query(
+      `INSERT INTO pbc_items (
+          engagement_id, num, category, item_requested, why_purpose, format_expected,
+          priority, tsc_mapping, internal_comments, entity_id, template_key
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11)`,
+      [targetId, p.num, p.category, p.item_requested, p.why_purpose, p.format_expected,
+       p.priority, JSON.stringify(p.tsc_mapping ?? []), p.internal_comments,
+       mappedEntity, p.template_key]
+    );
+  }
+
   // Access requests — reset status / provisioned_date / notes.
   await tx.query(
     `INSERT INTO access_requests (
@@ -354,19 +423,6 @@ async function copyTemplateRows(
       SELECT $1, num, process_area, description, objective,
              key_topics, attendees, duration_min
         FROM walkthroughs
-       WHERE engagement_id = $2
-       ORDER BY num`,
-    [targetId, sourceId]
-  );
-  // Entities — copy as-is (templates of in-scope/out-of-scope examples).
-  await tx.query(
-    `INSERT INTO entities (
-        engagement_id, num, legal_entity, country_location, it_model,
-        key_applications, hosting, headcount, in_scope, rationale
-      )
-      SELECT $1, num, legal_entity, country_location, it_model,
-             key_applications, hosting, headcount, in_scope, rationale
-        FROM entities
        WHERE engagement_id = $2
        ORDER BY num`,
     [targetId, sourceId]

@@ -7,10 +7,15 @@
 // content per-template using Settings → Re-sync from Excel inside the
 // template engagement.
 //
-// Counts mirror the workbook: 55 PBC items across 10 categories, 19 access
-// requests, 11 walkthroughs, 16 sampling controls. Entities are intentionally
-// illustrative (the workbook's Entity Scope sheet is a blank per-client
-// template).
+// Counts: 88 PBC items across 14 categories, 19 access requests, 11
+// walkthroughs, 16 sampling controls. The original 55 items across 10
+// categories are transcribed from the workbook; the Endpoint & MDM, Security
+// Posture, Cloud Security Posture, and AI Governance categories (33 items)
+// were added to cover modern endpoint-management, posture, and AI-governance
+// audit scope. Each PBC item carries a `scope` ('group' | 'entity'): entity
+// items are instantiated once per in-scope legal entity at seed time.
+// Entities are intentionally illustrative (the workbook's Entity Scope sheet
+// is a blank per-client template).
 //
 // Categories MUST match the Category union in src/types/index.ts. The TSC
 // auto-mapping (DEFAULT_TSC_BY_CATEGORY below) is the single source of truth
@@ -26,6 +31,10 @@ export const PBC_CATEGORIES: readonly PBCCategory[] = [
   'Access Management',
   'Change Management',
   'IT Operations',
+  'Endpoint & MDM',
+  'Security Posture',
+  'Cloud Security Posture',
+  'AI Governance',
   'Third Parties',
   'Licensing',
   'IT Spend',
@@ -43,6 +52,10 @@ export const DEFAULT_TSC_BY_CATEGORY: Record<PBCCategory, TSC[]> = {
   'Access Management': ['Security', 'Confidentiality'],
   'Change Management': ['Security', 'Processing Integrity'],
   'IT Operations': ['Availability', 'Security'],
+  'Endpoint & MDM': ['Security', 'Confidentiality'],
+  'Security Posture': ['Security'],
+  'Cloud Security Posture': ['Security', 'Availability', 'Confidentiality'],
+  'AI Governance': ['Security', 'Confidentiality', 'Privacy'],
   'Third Parties': ['Security', 'Confidentiality'],
   'Licensing': ['Security'],
   'IT Spend': [],
@@ -58,6 +71,10 @@ export const CATEGORY_COVERAGE: Record<PBCCategory, string> = {
   'Access Management': 'Identity dump, privileged users, HR reconciliation, JML, access reviews, service accounts, authentication',
   'Change Management': 'Change population, procedure, emergency changes, dev/prod segregation, code repos',
   'IT Operations': 'Backups, incidents, monitoring, patching, vulnerabilities, AV/EDR, BCP/DR',
+  'Endpoint & MDM': 'Device management platform, compliance policies, configuration baselines, app protection, mobile/BYOD, endpoint patching',
+  'Security Posture': 'Posture score & trend, attack surface & exposure, detection coverage, posture remediation, framework alignment',
+  'Cloud Security Posture': 'CSPM findings, cloud config baselines, cloud identity & privileged access, key/secret/data protection, cloud logging & detection',
+  'AI Governance': 'AI/GenAI tool inventory, AI acceptable-use policy, Copilot/enterprise AI config, data exposure & DLP for AI, shadow AI & model risk',
   'Third Parties': 'Vendor inventory, assurance reports, onboarding/DD, contracts/DPAs',
   'Licensing': 'License inventory & optimization, true-ups, SaaS seats, prior audits, procurement',
   'IT Spend': 'Budget vs actual, GL detail, top vendors, PO/invoice approval, intercompany, capex/opex, shadow IT',
@@ -72,6 +89,61 @@ export interface LibraryPBCItem {
   formatExpected: string;
   priority: PBCPriority;
   tscMapping: TSC[];
+  /**
+   * `'group'` — one engagement-wide request. `'entity'` — instantiated once
+   * per in-scope legal entity (e.g. a network map per subsidiary).
+   */
+  scope: 'group' | 'entity';
+  /** Stable slug linking a seeded row back to this library item. */
+  templateKey: string;
+}
+
+/**
+ * Default scope per category. Most audit evidence is group-wide; access work
+ * and physical controls are inherently per-entity (each entity has its own
+ * identity tenant / AD / facility). Per-item exceptions are in SCOPE_OVERRIDES.
+ */
+const DEFAULT_SCOPE_BY_CATEGORY: Record<PBCCategory, 'group' | 'entity'> = {
+  'Governance': 'group',
+  'Entities & Systems': 'group',
+  'Access Management': 'entity',
+  'Change Management': 'group',
+  'IT Operations': 'group',
+  'Endpoint & MDM': 'group',
+  'Security Posture': 'group',
+  'Cloud Security Posture': 'group',
+  'AI Governance': 'group',
+  'Third Parties': 'group',
+  'Licensing': 'group',
+  'IT Spend': 'group',
+  'SOC 2 Readiness': 'group',
+  'Physical & Environmental': 'entity',
+};
+
+// Per-item scope exceptions, matched by a substring of `itemRequested`.
+// In Entities & Systems the inventories are per-entity, but the multi-entity
+// scoping pack (which *defines* the entities) and the tenant-wide cloud/SaaS
+// inventory stay group-wide.
+const SCOPE_OVERRIDES: { match: string; scope: 'group' | 'entity' }[] = [
+  { match: 'Application inventory per entity', scope: 'entity' },
+  { match: 'Network architecture pack', scope: 'entity' },
+  { match: 'Asset inventory —', scope: 'entity' },
+  { match: 'Domain and SSL/TLS certificate inventory', scope: 'entity' },
+];
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+}
+
+// Stable key from category + the distinctive head clause of the request text.
+function templateKeyFor(category: string, itemRequested: string): string {
+  const head = itemRequested.split(/[—:]/)[0].trim();
+  return `${slugify(category)}/${slugify(head)}`;
+}
+
+function scopeFor(item: { category: PBCCategory; itemRequested: string }): 'group' | 'entity' {
+  const override = SCOPE_OVERRIDES.find(o => item.itemRequested.includes(o.match));
+  return override ? override.scope : DEFAULT_SCOPE_BY_CATEGORY[item.category];
 }
 
 export interface LibraryAccessRequest {
@@ -114,7 +186,7 @@ export interface LibrarySamplingItem {
 // ---- PBC items, grouped by category, in display order ----
 // Transcribed verbatim from the workbook's PBC List sheet. tscMapping is
 // derived per-category from DEFAULT_TSC_BY_CATEGORY below.
-const PBC_RAW: Omit<LibraryPBCItem, 'tscMapping'>[] = [
+const PBC_RAW: Omit<LibraryPBCItem, 'tscMapping' | 'scope' | 'templateKey'>[] = [
   // Governance (7)
   { category: 'Governance', itemRequested: 'IT organizational chart — all entities, with roles, reporting lines, and external vendors / MSPs / contractors involved in IT operations', whyPurpose: 'Understand IT structure, identify control owners, SoD at org level, surface external parties embedded in IT processes', formatExpected: 'PDF / Visio', priority: 'High' },
   { category: 'Governance', itemRequested: 'All IT and InfoSec policies — Acceptable Use, InfoSec, Access Control, Change Mgmt, Backup, Incident Response, Vendor Mgmt, Data Classification, BCP/DR, Password, Remote Access, Encryption, Data Retention, GenAI Use, MDM, Clean Desk', whyPurpose: 'Baseline for control design assessment; SOC 2 TSC mapping; check policies are current and approved', formatExpected: 'PDF / Word, with version, approval date, and owner', priority: 'High' },
@@ -157,6 +229,47 @@ const PBC_RAW: Omit<LibraryPBCItem, 'tscMapping'>[] = [
   { category: 'IT Operations', itemRequested: 'AV / EDR coverage and operations — tooling per platform; coverage (deployed vs total assets, % per class, excluded assets register, stale agents, outdated versions); configuration (policy export, tamper protection, exclusions list, ASR rules, controlled folder access, EDR block mode); operations (sample detection events with triage, alert tuning, agent health monitoring, SIEM integration, threat hunting); agent patching', whyPurpose: 'Endpoint protection coverage gaps = blind spots; SOC 2 CC6.8', formatExpected: 'Console exports + reports', priority: 'Medium' },
   { category: 'IT Operations', itemRequested: 'BCP / DR plans + test evidence — BCP, DRP, crisis mgmt plan, pandemic plan; last review/approval; BIA (date, processes, RTO/RPO/MAO per process, dependencies, financial impact); DR architecture (site, replication, failover mechanism, capacity at DR, third-party resilience); test schedule + types performed; most recent DR test per critical system (scope, RTO/RPO achieved vs target, issues, lessons, sign-off); BCP exercises; tabletop with leadership; roles & contacts (out-of-band); workforce continuity; cyber recovery scenarios; any actual invocations during period', whyPurpose: 'SOC 2 Availability; resilience to disruption', formatExpected: 'Plan documents + test reports', priority: 'Medium-High' },
 
+  // Endpoint & MDM (9)
+  { category: 'Endpoint & MDM', itemRequested: 'Device management platform configuration export — full enrolled-device inventory per MDM/UEM (Intune / Jamf / Workspace ONE / etc.): platform, ownership (corporate vs BYOD), enrolment method (Autopilot / ADE / manual / Co-management), compliance state, last check-in, OS build, encryption state, primary user, entity; enrolment restrictions; tenant/console config overview', whyPurpose: 'Establishes the managed-device population — the denominator for every endpoint control test; surfaces unmanaged and stale devices', formatExpected: 'CSV / console export + screenshots', priority: 'High' },
+  { category: 'Endpoint & MDM', itemRequested: 'Device compliance policies — full export per platform (Windows / macOS / iOS / Android): settings enforced (disk encryption, minimum OS, jailbreak/root detection, password/PIN complexity, firewall, threat-defence integration), assignment scope, grace periods, and the actions taken for non-compliance; compliance dashboard showing % compliant and top failure reasons', whyPurpose: 'Compliance policy is the enforced security baseline for endpoints; tests design and operating effectiveness of device hardening', formatExpected: 'Policy exports + compliance dashboard screenshots', priority: 'High' },
+  { category: 'Endpoint & MDM', itemRequested: 'Configuration profiles & security baselines — configuration profiles and security baselines applied per platform (BitLocker / FileVault, Defender / ASR rules, account protection, firewall, Wi-Fi / VPN / certificate profiles, browser controls); settings-catalog / baseline drift report; comparison against the CIS or vendor-recommended baseline with documented deviations', whyPurpose: 'Confirms endpoints are hardened to a defined standard and drift is detected, not just that a policy exists', formatExpected: 'Profile exports + baseline comparison', priority: 'Medium-High' },
+  { category: 'Endpoint & MDM', itemRequested: 'App protection & device-based Conditional Access — MAM / app-protection policies (data protection, access requirements, conditional launch), managed-app inventory, and how device compliance feeds Conditional Access (compliant-device CA policies, app-protection CA policies); BYOD data-containment approach and selective-wipe capability', whyPurpose: 'Validates that corporate data on endpoints is contained and that only compliant devices reach corporate resources', formatExpected: 'Policy exports + CA policy export + screenshots', priority: 'Medium-High' },
+  { category: 'Endpoint & MDM', itemRequested: 'Mobile & BYOD governance — BYOD policy, MDM enrolment requirements for personal devices, what corporate data is permitted on unmanaged devices, lost / stolen device procedure, and 3-5 sample selective-wipe / retire tickets with evidence (request, approval, completion timestamp)', whyPurpose: 'Tests the control around personal devices accessing corporate data and the leaver / lost-device data-removal process', formatExpected: 'Policy + sample ticket exports', priority: 'Medium' },
+  { category: 'Endpoint & MDM', itemRequested: 'Endpoint update & patch management via MDM — OS and app update rings / policies per platform, update-compliance reporting, feature vs quality update cadence, devices on unsupported OS versions, autopatch / managed-update configuration; reconciliation of MDM-managed devices against the asset inventory and EDR coverage', whyPurpose: 'Endpoint patching is a top breach vector; reconciliation surfaces devices missing from management, patching, or EDR', formatExpected: 'Update reports + reconciliation workbook', priority: 'Medium' },
+  { category: 'Endpoint & MDM', itemRequested: 'Disk-encryption key escrow & recovery — per platform: percentage of devices encrypted (BitLocker / FileVault), evidence that recovery keys are escrowed to the directory / MDM, access controls on recovery keys, a sample key-recovery event, and the register of unencrypted devices with justification', whyPurpose: 'Encryption only protects data if keys are recoverable and escrow is enforced; unencrypted devices are an unmanaged data-loss path', formatExpected: 'Console exports + screenshots + exception register', priority: 'Medium-High' },
+  { category: 'Endpoint & MDM', itemRequested: 'Local administrator & endpoint privilege management — LAPS or endpoint privilege-management tool deployment and coverage, who holds standing local-admin rights, just-in-time elevation configuration, and 3-5 sample elevation requests with approval evidence', whyPurpose: 'Standing local admin on endpoints is a primary lateral-movement and ransomware enabler; tests least privilege at the device layer', formatExpected: 'Tool exports + coverage report + sample approvals', priority: 'Medium-High' },
+  { category: 'Endpoint & MDM', itemRequested: 'Device exception & non-compliance register — devices past their compliance grace period, devices formally exempted from compliance policy (with justification, owner and expiry), Conditional Access device exclusions, and the remediation tracking for non-compliant devices', whyPurpose: 'Exceptions are where endpoint controls quietly erode; confirms non-compliance is tracked and time-bound, not permanent', formatExpected: 'Exception register + compliance dashboard export', priority: 'Medium' },
+
+  // Security Posture (8)
+  { category: 'Security Posture', itemRequested: 'Security posture score & trend — current Microsoft Secure Score (or equivalent posture score) with score history across the audit period, breakdown by category (identity, devices, apps, data, infrastructure), the top improvement actions and their status, and comparison to the industry / size baseline; any posture items formally risk-accepted by management', whyPurpose: 'Gives an objective, trended view of security posture and whether it is improving, holding, or degrading over the period', formatExpected: 'Screenshots + score export + trend chart', priority: 'High' },
+  { category: 'Security Posture', itemRequested: 'Attack surface & external exposure — external attack-surface inventory (internet-facing assets, open ports, exposed services, exposed admin interfaces), EASM / ASM tooling output, exposed or expiring certificates, full subdomain inventory; forgotten / shadow internet-facing assets identified; remediation tracking for exposed findings', whyPurpose: 'The external attack surface is what an attacker sees first; surfaces unknown exposure and shadow assets outside asset management', formatExpected: 'Tool exports + remediation tracker', priority: 'High' },
+  { category: 'Security Posture', itemRequested: 'Detection & threat-coverage maturity — detection coverage mapped to MITRE ATT&CK with documented gaps, log-source coverage vs the asset inventory, the high-value detections in place (privileged role changes, CA policy changes, break-glass usage, mass download / permission change, audit-log clear), the detection-engineering / tuning process, and mean-time-to-detect metrics', whyPurpose: 'Posture is not just prevention — confirms the organisation can actually detect the scenarios that matter', formatExpected: 'Coverage matrix + SIEM exports + screenshots', priority: 'Medium-High' },
+  { category: 'Security Posture', itemRequested: 'Posture management process & remediation — who owns security posture, the cadence of posture review, how posture findings become remediation tickets with close-the-loop evidence, the posture KPIs reported to leadership, and the accepted-risk register for posture items not being remediated', whyPurpose: 'Confirms posture is actively managed with accountability, not just measured by a dashboard nobody actions', formatExpected: 'Process doc + ticket samples + leadership reporting', priority: 'Medium' },
+  { category: 'Security Posture', itemRequested: 'Framework & benchmark alignment — most recent self- or external assessment against a recognised framework (CIS Controls / NIST CSF / ISO 27001 / Cyber Essentials), the maturity scoring, the gap-remediation roadmap, and the assessment date and assessor', whyPurpose: 'Places posture in the context of a recognised control framework and shows a managed path to maturity', formatExpected: 'Assessment report + remediation roadmap', priority: 'Medium' },
+  { category: 'Security Posture', itemRequested: 'Phishing-resistant MFA rollout status — coverage of phishing-resistant authentication (FIDO2 / passkeys / certificate-based / Windows Hello for Business) versus legacy MFA (SMS / voice / push), the rollout plan and current status, coverage of privileged accounts specifically, and evidence of legacy-authentication elimination', whyPurpose: 'Push/SMS MFA is now routinely bypassed; phishing-resistant coverage — especially for admins — is a leading posture indicator', formatExpected: 'Coverage report + screenshots + rollout plan', priority: 'High' },
+  { category: 'Security Posture', itemRequested: 'Identity Secure Score & risk deep-dive — identity-specific posture: risky users and risky sign-ins over the period, risk-policy configuration, legacy authentication still in use, dormant or unused privileged accounts, and the identity recommendations with their remediation status', whyPurpose: 'Identity is the most-attacked surface; a focused identity-posture view surfaces the exposures a headline score hides', formatExpected: 'Screenshots + exports', priority: 'Medium-High' },
+  { category: 'Security Posture', itemRequested: 'Penetration test & remediation evidence — most recent internal and external penetration tests (scope, methodology, dates, tester), findings by severity, the retest evidence, any critical / high findings still open with compensating controls, and any red-team / purple-team exercises run during the period', whyPurpose: 'Independent offensive testing validates that controls hold under real attack, and the retest discipline shows findings are actually closed', formatExpected: 'Pen-test reports + retest evidence + remediation tracker', priority: 'Medium-High' },
+
+  // Cloud Security Posture (8)
+  { category: 'Cloud Security Posture', itemRequested: 'Cloud security posture management (CSPM) output — CSPM findings per cloud (Defender for Cloud / Security Hub / SCC / third-party): misconfiguration findings by severity, trend across the period, top recurring issues, public-exposed storage and databases, unencrypted resources, and remediation status; secure-score per cloud', whyPurpose: 'CSPM is the primary detective control for cloud misconfiguration — the dominant cause of cloud breaches', formatExpected: 'CSPM exports + dashboards', priority: 'High' },
+  { category: 'Cloud Security Posture', itemRequested: 'Cloud configuration baselines & guardrails — configuration measured against the CIS benchmark per cloud (Azure / AWS / GCP) with compliance score and documented deviations; landing-zone / guardrail policy (Azure Policy / SCPs / Org Policy) export and evidence it is enforced (deny / audit effects, exemptions register)', whyPurpose: 'Confirms cloud environments are built to a defined secure baseline and guardrails actually prevent drift', formatExpected: 'Benchmark reports + policy exports', priority: 'Medium-High' },
+  { category: 'Cloud Security Posture', itemRequested: 'Cloud identity & privileged access — RBAC export per cloud (Owner / Contributor / User Access Administrator, IAM roles, GCP roles), privileged-role inventory, PIM / JIT usage, service principals and access keys with age and last-used date, cross-account / cross-tenant trust relationships, and root / break-glass account protection evidence', whyPurpose: 'Cloud identity is the new perimeter; standing privilege and stale keys are the most exploited cloud weaknesses', formatExpected: 'IAM / RBAC exports + screenshots', priority: 'High' },
+  { category: 'Cloud Security Posture', itemRequested: 'Cloud key, secret & data protection — key-management inventory (Key Vault / KMS) with rotation evidence, secret inventory and expiry, encryption-at-rest and in-transit coverage, public exposure of storage and databases, and network exposure (NSGs / security groups / firewall rules, public IPs, exposed management ports)', whyPurpose: 'Tests the controls protecting data and credentials in the cloud — common high-severity finding area', formatExpected: 'Config exports + screenshots', priority: 'Medium-High' },
+  { category: 'Cloud Security Posture', itemRequested: 'Cloud logging, monitoring & threat detection — evidence that cloud-native logging is enabled and centralised (Activity log / Defender for Cloud, CloudTrail / GuardDuty, GCP audit logs), log retention settings, sample threat-detection alerts with triage, coverage gaps, and who responds to cloud alerts and within what SLA', whyPurpose: 'Without cloud logging and detection, cloud incidents go unseen; confirms detective controls extend into the cloud', formatExpected: 'Config screenshots + sample alerts', priority: 'Medium' },
+  { category: 'Cloud Security Posture', itemRequested: 'Public exposure report & remediation — internet-exposed cloud resources (public storage / buckets, publicly reachable databases, exposed management ports such as RDP / SSH, public IPs without documented justification), how exposure is detected, and the remediation timeline and status for each finding', whyPurpose: 'Public exposure of storage and management ports is the single most common cause of cloud data breaches', formatExpected: 'CSPM / scan exports + remediation tracker', priority: 'High' },
+  { category: 'Cloud Security Posture', itemRequested: 'Cloud key & secret rotation evidence — rotation cadence and last-rotation evidence for keys and secrets per cloud, the age of any long-lived access keys / secrets, secrets-in-code scanning coverage, and the customer-managed vs platform-managed key decisions with rationale', whyPurpose: 'Stale, un-rotated keys and secrets-in-code are heavily exploited; tests credential hygiene in the cloud', formatExpected: 'Key vault / KMS exports + scan results', priority: 'Medium-High' },
+  { category: 'Cloud Security Posture', itemRequested: 'Cloud guardrail exemption register — exceptions granted against guardrail / CSPM policy: what was exempted, the justification, who approved it, the expiry date, and the compensating control; the trend in exemption volume and the review cadence', whyPurpose: 'Guardrails only hold if exceptions are tracked and time-bound; an unmanaged exemption list is a silent erosion of cloud posture', formatExpected: 'Exemption register + policy exports', priority: 'Medium' },
+
+  // AI Governance (8)
+  { category: 'AI Governance', itemRequested: 'AI & GenAI tool inventory — inventory of AI / GenAI tools and services in use (M365 Copilot, ChatGPT Enterprise / Team, embedded AI features in SaaS, ML / model platforms, AI APIs): owner, business purpose, data sent to the tool, vendor, contract and DPA status, sanctioned vs shadow; and how the inventory is kept current', whyPurpose: 'You cannot govern AI you have not inventoried; establishes the population for every other AI control', formatExpected: 'Excel inventory + supporting exports', priority: 'High' },
+  { category: 'AI Governance', itemRequested: 'AI acceptable-use policy & governance — the AI / GenAI acceptable-use policy (owner, approval date, scope), the rules on what data may and may not be entered into AI tools, prohibited use cases, staff training / awareness on AI use, and the governance body or approval process for adopting new AI tools', whyPurpose: 'Confirms there is a defined, approved, communicated control framework for AI use rather than ad-hoc adoption', formatExpected: 'PDF policy + training records + approval process doc', priority: 'High' },
+  { category: 'AI Governance', itemRequested: 'Copilot / enterprise AI configuration — for deployed enterprise AI (e.g. M365 Copilot): licensing and assignment, data-governance settings, what content the assistant can access, sensitivity-label and DLP enforcement on AI outputs, admin controls, audit logging of AI interactions, and evidence of oversharing / over-permissive access remediation before rollout', whyPurpose: 'Enterprise AI inherits the organisation’s access sprawl — confirms it was governed, not just switched on', formatExpected: 'Config screenshots + audit log samples', priority: 'Medium-High' },
+  { category: 'AI Governance', itemRequested: 'Data exposure & DLP for AI services — the controls preventing sensitive data leaving to AI services: DLP rules covering GenAI endpoints, network / CASB / proxy controls for unsanctioned AI sites, browser and endpoint controls, and evidence of blocked or alerted events during the period', whyPurpose: 'The primary AI risk is sensitive data leaving the organisation into a third-party model; tests whether that is actually controlled', formatExpected: 'DLP / CASB config + sample alert evidence', priority: 'Medium-High' },
+  { category: 'AI Governance', itemRequested: 'Shadow AI detection & model risk — the process to detect unsanctioned AI usage (CASB / proxy / discovery output), the model and vendor risk assessment for AI services in use (training-data use, data retention, IP ownership, accuracy / bias where AI informs decisions), and any incidents involving AI tools during the period', whyPurpose: 'Surfaces uncontrolled AI use and confirms the risk of the AI services in scope has actually been assessed', formatExpected: 'Discovery exports + risk assessments', priority: 'Medium' },
+  { category: 'AI Governance', itemRequested: 'Sensitivity-label & DLP enforcement on AI outputs — evidence that AI-generated content inherits and respects sensitivity labels and DLP, the label coverage on the source content the AI can reach, the oversharing controls in place, and sample label / DLP enforcement events on AI interactions', whyPurpose: 'Enterprise AI can surface and re-package sensitive content; tests that classification and DLP actually follow the data through the AI layer', formatExpected: 'Config screenshots + sample enforcement events', priority: 'Medium-High' },
+  { category: 'AI Governance', itemRequested: 'AI vendor & sub-processor register — for each AI service in use: vendor, sub-processors, data-processing location, DPA status, training-data and retention clauses, model-provider chain, and any certification (SOC 2 / ISO 27001 / ISO 42001) with review date', whyPurpose: 'AI services are third parties processing potentially sensitive data; confirms they are in the vendor-risk programme, not a blind spot', formatExpected: 'Excel register + DPAs + attestations', priority: 'Medium-High' },
+  { category: 'AI Governance', itemRequested: 'AI incident & misuse log — log of AI-related incidents, near-misses and policy violations during the period (sensitive data entered into AI tools, inaccurate AI output relied upon, prohibited-use violations), the shadow-AI discovery output, and the resulting lessons learned or control changes', whyPurpose: 'Shows whether AI risk is actively monitored and whether incidents drive control improvement, rather than AI being an ungoverned experiment', formatExpected: 'Incident log + discovery exports', priority: 'Medium' },
+
   // Third Parties (4)
   { category: 'Third Parties', itemRequested: 'Vendor / third-party listing with criticality — per vendor: name, service, type, owners, entity served, criticality + rationale, data accessed + classification, system access, sub-processors, contract dates, annual spend, DPA, last DD, last assurance report, status; sub-service orgs flagged for SOC 2; categories covered (cloud, SaaS, MSPs, software vendors with prod access, consultants, payment, HR/payroll, comms, marketing/analytics, AI/ML services, physical security); reconciliation against AP / vendor master / SaaS discovery / expense reports', whyPurpose: 'Scope vendor risk testing; sub-service orgs for SOC 2; surface shadow IT', formatExpected: 'Excel', priority: 'High' },
   { category: 'Third Parties', itemRequested: 'Third-party assurance reports — SOC 1/SOC 2/ISO 27001 for critical vendors and named sub-service orgs; bridge letters for gap to audit period end; internal review log (reviewer, date, findings, CUECs implemented); list of critical vendors without reports + alternative DD', whyPurpose: 'Reliance on key vendors for SOC 2 and ITGC', formatExpected: 'PDFs + Excel review tracker', priority: 'High' },
@@ -194,7 +307,21 @@ const PBC_RAW: Omit<LibraryPBCItem, 'tscMapping'>[] = [
 const PBC: LibraryPBCItem[] = PBC_RAW.map((i) => ({
   ...i,
   tscMapping: DEFAULT_TSC_BY_CATEGORY[i.category],
+  scope: scopeFor(i),
+  templateKey: templateKeyFor(i.category, i.itemRequested),
 }));
+
+// Fail fast if two items collapse to the same templateKey — the re-sync logic
+// relies on it being unique within an engagement.
+{
+  const seen = new Set<string>();
+  for (const item of PBC) {
+    if (seen.has(item.templateKey)) {
+      throw new Error(`library: duplicate templateKey "${item.templateKey}"`);
+    }
+    seen.add(item.templateKey);
+  }
+}
 
 // ---- Access requests ----
 // Transcribed verbatim from the workbook's Access Requests sheet.

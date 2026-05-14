@@ -28,25 +28,28 @@
     @apply w-full text-[13px];
   }
   .data-table thead th {
-    @apply sticky top-0 z-10 bg-canvas dark:bg-navy-950 border-b border-rule dark:border-navy-700 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-ink-500 dark:text-slate-400 select-none;
+    @apply sticky top-0 z-10 bg-canvas dark:bg-navy-950 border-b border-rule dark:border-navy-700 px-3.5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-ink-500 dark:text-slate-400 select-none;
   }
   .data-table tbody td {
-    @apply border-b border-rule dark:border-navy-800 px-3 align-middle h-[34px];
+    @apply border-b border-rule dark:border-navy-800 px-3.5 align-middle h-[42px];
+  }
+  .data-table tbody tr:last-child td {
+    @apply border-b-0;
   }
   .data-table tbody tr:hover td {
-    @apply bg-canvas/70 dark:bg-navy-900/40;
+    @apply bg-canvas/60 dark:bg-navy-900/40;
   }
   .data-table tbody tr.selected td {
     @apply bg-navy-50 dark:bg-navy-800;
   }
   .kpi-num {
-    @apply text-[28px] font-semibold leading-none tabular tracking-tight;
+    @apply text-[26px] font-semibold leading-none tabular tracking-tight;
   }
   .kpi-label {
-    @apply text-[11px] uppercase tracking-wider font-semibold text-ink-500 dark:text-slate-400;
+    @apply text-[11px] uppercase tracking-wide font-semibold text-ink-500 dark:text-slate-400;
   }
   .section-label {
-    @apply text-[11px] uppercase tracking-wider font-semibold text-ink-500 dark:text-slate-400;
+    @apply text-[11px] uppercase tracking-wide font-semibold text-ink-500 dark:text-slate-400;
   }
   .skeleton {
     @apply animate-pulse bg-slate-100 dark:bg-navy-800 rounded;

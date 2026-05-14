@@ -1,15 +1,17 @@
 'use client';
 import * as React from 'react';
-import type { PBCItem, EvidenceFile, ActivityLog } from '@/types';
+import type { PBCItem, EvidenceFile, ActivityLog, Entity } from '@/types';
 import { Button } from '@/components/ui/button';
 import { StatusPill, Badge } from '@/components/ui/badge';
 import { InlineDate, InlineSelect, InlineText } from '@/components/tables/InlineEdit';
 import { STATUSES, PRIORITIES, TSC_VALUES, formatDate, formatDateTime, fileSize, isOverdue } from '@/lib/utils';
-import { Upload, X, Trash2, Paperclip, Link2, Plus, Search, Info } from 'lucide-react';
+import { Upload, X, Trash2, Paperclip, Link2, Plus, Search, Info, ArrowRight, CheckCircle2, Building2 } from 'lucide-react';
 import ContextSection from '@/components/ui/ContextSection';
 import { CATEGORY_COVERAGE } from '@/lib/templates/library';
 
 type Role = 'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer';
+
+const GROUP_WIDE = '— Group-wide —';
 
 export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor_lead' }: {
   item: PBCItem;
@@ -31,15 +33,21 @@ export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor
   const [activity, setActivity] = React.useState<ActivityLog[]>([]);
   const [dragOver, setDragOver] = React.useState(false);
   const [allItems, setAllItems] = React.useState<PBCItem[]>([]);
+  const [entities, setEntities] = React.useState<Entity[]>([]);
   const linkedItems = React.useMemo(
     () => allItems.filter(p => item.linkedItems.includes(p.id)),
     [allItems, item.linkedItems]
   );
+  const entityName = item.entityId != null
+    ? (entities.find(e => e.id === item.entityId)?.legalEntity ?? null)
+    : null;
 
   React.useEffect(() => {
     fetch(`/api/evidence/${item.id}`).then(r => r.json()).then(setEvidence).catch(() => {});
     fetch(`/api/activity?type=pbc&id=${item.id}`).then(r => r.json()).then(setActivity).catch(() => {});
     fetch('/api/pbc').then(r => r.json()).then(setAllItems).catch(() => {});
+    fetch('/api/entities').then(r => r.json()).then((d: Entity[]) =>
+      setEntities(d.filter(e => e.legalEntity))).catch(() => {});
   }, [item.id]);
 
   function addLink(targetId: number) {
@@ -101,14 +109,18 @@ export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor
               <div className="text-[15px] font-semibold tracking-tight leading-tight text-ink-900 dark:text-slate-100">
                 {item.itemRequested}
               </div>
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <StatusPill status={item.status} />
-                <Badge tone={item.priority === 'High' ? 'danger' : item.priority.startsWith('Medium') ? 'gold' : 'neutral'}>
-                  {item.priority}
-                </Badge>
-                {isOverdue(item) && <Badge tone="danger">Overdue</Badge>}
-                {item.tscMapping.map(t => <Badge key={t} tone="neutral">{t}</Badge>)}
-              </div>
+              {entityName && (
+                <div className="inline-flex items-center gap-1 mt-1.5 text-[11.5px] font-medium text-navy-700 dark:text-navy-300">
+                  <Building2 className="w-3.5 h-3.5" />
+                  {entityName}
+                </div>
+              )}
+              {(isOverdue(item) || (isAuditor && item.tscMapping.length > 0)) && (
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  {isOverdue(item) && <Badge tone="danger">Overdue</Badge>}
+                  {isAuditor && item.tscMapping.map(t => <Badge key={t} tone="neutral">{t}</Badge>)}
+                </div>
+              )}
             </div>
             <button onClick={onClose} className="p-1 rounded hover:bg-canvas dark:hover:bg-navy-800">
               <X className="w-4 h-4 text-ink-500" />
@@ -130,6 +142,38 @@ export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {tab === 'detail' && (
             <div className="space-y-5 text-[13px]">
+              {!isAuditor && (
+                item.status === 'Received' || item.status === 'Reviewed' ? (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-900 px-4 py-3 flex items-center gap-3">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <div className="flex-1 text-[12.5px] text-emerald-800 dark:text-emerald-200">
+                      Evidence provided — the audit team will review it.
+                    </div>
+                    <button
+                      onClick={() => setTab('evidence')}
+                      className="text-[12px] font-medium text-emerald-800 dark:text-emerald-200 hover:underline shrink-0"
+                    >
+                      View files{evidence.length ? ` (${evidence.length})` : ''}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setTab('evidence')}
+                    className="w-full rounded-lg bg-navy-700 text-white px-4 py-3 flex items-center justify-between gap-3 hover:bg-navy-800 transition-colors"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Upload className="w-4 h-4" />
+                      <span className="text-[13px] font-medium">
+                        {evidence.length > 0
+                          ? `Manage evidence (${evidence.length} file${evidence.length === 1 ? '' : 's'})`
+                          : 'Upload evidence for this request'}
+                      </span>
+                    </span>
+                    <ArrowRight className="w-4 h-4 shrink-0" />
+                  </button>
+                )
+              )}
+
               {isAuditor && (!item.whyPurpose || !item.formatExpected) && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900 px-3 py-2 flex items-start gap-2">
                   <Info className="w-3.5 h-3.5 text-amber-700 dark:text-amber-300 mt-0.5 shrink-0" />
@@ -142,149 +186,169 @@ export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor
                 </div>
               )}
 
-              <ContextSection
-                label="The ask"
-                caption="What the auditor needs from the client."
-                audience="client"
-              >
-                <p className="text-ink-900 dark:text-slate-100 leading-relaxed text-[13.5px]">
-                  {item.itemRequested}
-                </p>
-              </ContextSection>
-
-              <ContextSection
-                label="Why we need it"
-                caption="Audit purpose — helps the client understand what this evidence supports."
-                audience="client"
-              >
-                {isAuditor ? (
-                  <InlineText
-                    value={item.whyPurpose}
-                    onCommit={v => onPatch({ whyPurpose: v ?? '' } as Partial<PBCItem>)}
-                    placeholder="Explain why this evidence is needed (e.g. supports SoD testing for access management)…"
-                    multiline
-                  />
-                ) : (
-                  <p className="text-ink-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
-                    {item.whyPurpose || <span className="text-ink-500 italic">The auditor hasn&apos;t added context yet — reach out if you&apos;re unsure why this is being requested.</span>}
-                  </p>
-                )}
-              </ContextSection>
-
-              <ContextSection
-                label="What good looks like"
-                caption="Format and content the auditor expects."
-                audience="client"
-              >
-                {isAuditor ? (
-                  <InlineText
-                    value={item.formatExpected}
-                    onCommit={v => onPatch({ formatExpected: v ?? '' } as Partial<PBCItem>)}
-                    placeholder="e.g. Excel/CSV including hire dates, manager, last login…"
-                    multiline
-                  />
-                ) : (
-                  <p className="text-ink-700 dark:text-slate-300 whitespace-pre-line">
-                    {item.formatExpected || <span className="text-ink-500 italic">No specific format requested.</span>}
-                  </p>
-                )}
-              </ContextSection>
-
-              <div className="rounded-lg border border-rule dark:border-navy-800 bg-canvas/40 dark:bg-navy-900/40 p-3.5">
-                <div className="text-[10.5px] uppercase tracking-wider font-semibold text-ink-500 dark:text-slate-400 mb-2.5">
-                  Workflow
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Status">
-                    <InlineSelect
-                      value={item.status} options={[...STATUSES]}
-                      onCommit={v => onPatch({ status: v as PBCItem['status'] })}
-                      renderValue={v => <StatusPill status={v} />}
+              <Group title="Request">
+                <ContextSection label="Why we need it" audience="client">
+                  {isAuditor ? (
+                    <InlineText
+                      value={item.whyPurpose}
+                      onCommit={v => onPatch({ whyPurpose: v ?? '' } as Partial<PBCItem>)}
+                      placeholder="Explain why this evidence is needed (e.g. supports SoD testing for access management)…"
+                      multiline
                     />
-                  </Field>
-                  <Field label="Priority">
-                    <InlineSelect
-                      value={item.priority} options={[...PRIORITIES]}
-                      onCommit={v => onPatch({ priority: v as PBCItem['priority'] })}
-                      renderValue={v => <span>{v}</span>}
-                    />
-                  </Field>
-                  <Field label="Owner (Client)">
-                    <InlineText value={item.ownerClient} onCommit={v => onPatch({ ownerClient: v })} placeholder="Unassigned" />
-                  </Field>
-                  <Field label="Date Requested">
-                    <InlineDate value={item.dateRequested} onCommit={v => onPatch({ dateRequested: v })} />
-                  </Field>
-                  <Field label="Date Received">
-                    <InlineDate value={item.dateReceived} onCommit={v => onPatch({ dateReceived: v })} />
-                  </Field>
-                  <Field label="Updated">
-                    <span className="text-ink-500">{formatDateTime(item.updatedAt)}</span>
-                  </Field>
-                </div>
-              </div>
-
-              <ContextSection
-                label="Where it goes in the report"
-                caption="SOC 2 Trust Service Criteria this evidence supports."
-                audience="internal"
-              >
-                <div className="flex flex-wrap gap-1.5">
-                  {TSC_VALUES.map(t => {
-                    const on = item.tscMapping.includes(t);
-                    return (
-                      <button
-                        key={t}
-                        onClick={() => toggleTSC(t)}
-                        disabled={!isAuditor}
-                        title={!isAuditor ? 'Only auditors can adjust TSC mapping' : undefined}
-                        className={`px-2 py-0.5 text-[11.5px] rounded ring-1 ring-inset disabled:cursor-not-allowed disabled:opacity-60 ${on ? 'bg-navy-700 text-white ring-navy-700' : 'bg-white text-ink-700 ring-rule hover:bg-canvas dark:bg-navy-900 dark:text-slate-300 dark:ring-navy-700'}`}
-                      >
-                        {t}
-                      </button>
-                    );
-                  })}
-                </div>
-              </ContextSection>
-
-              <ContextSection
-                label="Notes"
-                caption="Visible to both client and auditor — use this for clarifications."
-                audience="both"
-              >
-                <InlineText value={item.notes} onCommit={v => onPatch({ notes: v })} placeholder="Add a note…" multiline />
-              </ContextSection>
-
-              <ContextSection
-                label="Linked items"
-                caption="Cross-reference related requests (e.g. HR list ↔ AD dump for reconciliation)."
-                audience="internal"
-              >
-                <div className="space-y-1">
-                  {linkedItems.length === 0 && (
-                    <p className="text-ink-500 text-[12px]">No links yet.</p>
+                  ) : (
+                    <p className="text-ink-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
+                      {item.whyPurpose || <span className="text-ink-500 italic">The auditor hasn&apos;t added context yet — reach out if you&apos;re unsure why this is being requested.</span>}
+                    </p>
                   )}
-                  {linkedItems.map(li => (
-                    <div key={li.id} className="flex items-center gap-2 text-[12.5px] group">
-                      <Link2 className="w-3 h-3 text-ink-500 shrink-0" />
-                      <span className="text-ink-500 shrink-0">#{li.num}</span>
-                      <span className="truncate flex-1">{li.itemRequested}</span>
-                      <button
-                        onClick={() => removeLink(li.id)}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-canvas dark:hover:bg-navy-800 text-ink-500 hover:text-danger transition-opacity"
-                        title="Remove link"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                  <LinkPicker
-                    allItems={allItems}
-                    excludeIds={[item.id, ...item.linkedItems]}
-                    onPick={addLink}
-                  />
+                </ContextSection>
+
+                <ContextSection label="What good looks like" audience="client">
+                  {isAuditor ? (
+                    <InlineText
+                      value={item.formatExpected}
+                      onCommit={v => onPatch({ formatExpected: v ?? '' } as Partial<PBCItem>)}
+                      placeholder="e.g. Excel/CSV including hire dates, manager, last login…"
+                      multiline
+                    />
+                  ) : (
+                    <p className="text-ink-700 dark:text-slate-300 whitespace-pre-line">
+                      {item.formatExpected || <span className="text-ink-500 italic">No specific format requested.</span>}
+                    </p>
+                  )}
+                </ContextSection>
+              </Group>
+
+              {isAuditor ? (
+                <div className="rounded-lg border border-rule dark:border-navy-800 bg-canvas/40 dark:bg-navy-900/40 p-3.5">
+                  <div className="text-[11px] uppercase tracking-wide font-semibold text-ink-500 dark:text-slate-400 mb-2.5">
+                    Workflow
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="Status">
+                      <InlineSelect
+                        value={item.status} options={[...STATUSES]}
+                        onCommit={v => onPatch({ status: v as PBCItem['status'] })}
+                        renderValue={v => <StatusPill status={v} />}
+                      />
+                    </Field>
+                    <Field label="Priority">
+                      <InlineSelect
+                        value={item.priority} options={[...PRIORITIES]}
+                        onCommit={v => onPatch({ priority: v as PBCItem['priority'] })}
+                        renderValue={v => <span>{v}</span>}
+                      />
+                    </Field>
+                    <Field label="Entity">
+                      <InlineSelect
+                        value={entityName ?? GROUP_WIDE}
+                        options={[GROUP_WIDE, ...entities.map(e => e.legalEntity || `Entity #${e.num}`)]}
+                        onCommit={v => {
+                          if (v === GROUP_WIDE) { onPatch({ entityId: null }); return; }
+                          const match = entities.find(e => (e.legalEntity || `Entity #${e.num}`) === v);
+                          onPatch({ entityId: match ? match.id : null });
+                        }}
+                        renderValue={v => <span>{v}</span>}
+                      />
+                    </Field>
+                    <Field label="Owner (Client)">
+                      <InlineText value={item.ownerClient} onCommit={v => onPatch({ ownerClient: v })} placeholder="Unassigned" />
+                    </Field>
+                    <Field label="Date Requested">
+                      <InlineDate value={item.dateRequested} onCommit={v => onPatch({ dateRequested: v })} />
+                    </Field>
+                    <Field label="Date Received">
+                      <InlineDate value={item.dateReceived} onCommit={v => onPatch({ dateReceived: v })} />
+                    </Field>
+                    <Field label="Updated">
+                      <span className="text-ink-500">{formatDateTime(item.updatedAt)}</span>
+                    </Field>
+                  </div>
                 </div>
-              </ContextSection>
+              ) : (
+                // Client view: only the parts a client acts on or needs as
+                // context — not the audit team's internal tracking fields.
+                <div className="rounded-lg border border-rule dark:border-navy-800 bg-canvas/40 dark:bg-navy-900/40 p-3.5">
+                  <div className="text-[11px] uppercase tracking-wide font-semibold text-ink-500 dark:text-slate-400 mb-2.5">
+                    Your task
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="Status">
+                      <InlineSelect
+                        value={item.status} options={[...STATUSES]}
+                        onCommit={v => onPatch({ status: v as PBCItem['status'] })}
+                        renderValue={v => <StatusPill status={v} />}
+                      />
+                    </Field>
+                    <Field label="Owner (your side)">
+                      <InlineText value={item.ownerClient} onCommit={v => onPatch({ ownerClient: v })} placeholder="Unassigned" />
+                    </Field>
+                    <Field label="Priority">
+                      <span className="text-ink-700 dark:text-slate-300">{item.priority}</span>
+                    </Field>
+                    {entityName && (
+                      <Field label="Entity">
+                        <span className="text-ink-700 dark:text-slate-300">{entityName}</span>
+                      </Field>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {isAuditor ? (
+                <Group title="Audit & references">
+                  <ContextSection label="Where it goes in the report" audience="internal">
+                    <div className="flex flex-wrap gap-1.5">
+                      {TSC_VALUES.map(t => {
+                        const on = item.tscMapping.includes(t);
+                        return (
+                          <button
+                            key={t}
+                            onClick={() => toggleTSC(t)}
+                            className={`px-2 py-0.5 text-[11.5px] rounded ring-1 ring-inset ${on ? 'bg-navy-700 text-white ring-navy-700' : 'bg-white text-ink-700 ring-rule hover:bg-canvas dark:bg-navy-900 dark:text-slate-300 dark:ring-navy-700'}`}
+                          >
+                            {t}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </ContextSection>
+
+                  <ContextSection label="Notes" audience="both">
+                    <InlineText value={item.notes} onCommit={v => onPatch({ notes: v })} placeholder="Add a note…" multiline />
+                  </ContextSection>
+
+                  <ContextSection label="Linked items" audience="internal">
+                    <div className="space-y-1">
+                      {linkedItems.length === 0 && (
+                        <p className="text-ink-500 text-[12px]">No links yet.</p>
+                      )}
+                      {linkedItems.map(li => (
+                        <div key={li.id} className="flex items-center gap-2 text-[12.5px] group">
+                          <Link2 className="w-3 h-3 text-ink-500 shrink-0" />
+                          <span className="text-ink-500 shrink-0">#{li.num}</span>
+                          <span className="truncate flex-1">{li.itemRequested}</span>
+                          <button
+                            onClick={() => removeLink(li.id)}
+                            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-canvas dark:hover:bg-navy-800 text-ink-500 hover:text-danger transition-opacity"
+                            title="Remove link"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                      <LinkPicker
+                        allItems={allItems}
+                        excludeIds={[item.id, ...item.linkedItems]}
+                        onPick={addLink}
+                      />
+                    </div>
+                  </ContextSection>
+                </Group>
+              ) : (
+                <ContextSection label="Notes" audience="both">
+                  <InlineText value={item.notes} onCommit={v => onPatch({ notes: v })} placeholder="Add a note for the audit team…" multiline />
+                </ContextSection>
+              )}
             </div>
           )}
 
@@ -347,6 +411,17 @@ export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-3">
+      <div className="text-[11px] uppercase tracking-wide font-semibold text-ink-500 dark:text-slate-400 pb-1.5 border-b border-rule dark:border-navy-800">
+        {title}
+      </div>
+      {children}
     </div>
   );
 }

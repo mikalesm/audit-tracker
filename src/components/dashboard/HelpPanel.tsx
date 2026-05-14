@@ -4,16 +4,16 @@ import { ChevronDown, HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
- * Collapsible inline help block. Default open, can be collapsed and the
- * choice is remembered in localStorage by `storageKey` so a returning user
- * isn't forced to dismiss it again.
+ * Collapsible inline help block. Collapsed by default to keep the surface
+ * calm; the open/closed choice is remembered in localStorage by `storageKey`
+ * so a returning user isn't forced to re-collapse it.
  */
 export default function HelpPanel({
   title,
   children,
   storageKey,
-  defaultOpen = true,
-  tone = 'info',
+  defaultOpen = false,
+  tone = 'muted',
 }: {
   title: string;
   children: React.ReactNode;
@@ -41,25 +41,21 @@ export default function HelpPanel({
 
   return (
     <div className={cn(
-      'rounded-lg border',
-      tone === 'info'
-        ? 'border-blue-200 bg-blue-50/60 dark:bg-blue-950/30 dark:border-blue-900'
-        : 'border-rule bg-canvas dark:bg-navy-900 dark:border-navy-700'
+      'rounded-lg border border-rule bg-surface dark:bg-navy-900 dark:border-navy-700',
+      tone === 'info' && open && 'border-navy-200 dark:border-navy-700',
     )}>
       <button
         type="button"
         onClick={toggle}
-        className="w-full px-4 py-2.5 flex items-center gap-2 text-left"
+        className="w-full px-3.5 py-2 flex items-center gap-2 text-left group"
+        aria-expanded={open}
       >
-        <HelpCircle className={cn(
-          'w-4 h-4 shrink-0',
-          tone === 'info' ? 'text-blue-700 dark:text-blue-300' : 'text-ink-500'
-        )} />
-        <span className="text-[13px] font-medium tracking-tight flex-1">{title}</span>
-        <ChevronDown className={cn('w-4 h-4 text-ink-500 transition-transform', open && 'rotate-180')} />
+        <HelpCircle className="w-3.5 h-3.5 shrink-0 text-ink-300 group-hover:text-ink-500 dark:text-slate-500" />
+        <span className="text-[12px] font-medium text-ink-700 dark:text-slate-300 flex-1">{title}</span>
+        <ChevronDown className={cn('w-3.5 h-3.5 text-ink-300 transition-transform', open && 'rotate-180')} />
       </button>
       {open && (
-        <div className="px-4 pb-3 pt-0.5 text-[12.5px] text-ink-700 dark:text-slate-300 leading-relaxed">
+        <div className="px-3.5 pb-3 pl-9 text-[12px] text-ink-500 dark:text-slate-400 leading-relaxed">
           {children}
         </div>
       )}

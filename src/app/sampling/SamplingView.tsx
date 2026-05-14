@@ -47,11 +47,11 @@ export default function SamplingView() {
   }
 
   return (
-    <div className="px-6 py-6 max-w-[1500px] mx-auto space-y-4">
+    <div className="px-6 py-7 max-w-[1500px] mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[18px] font-semibold tracking-tight">Sampling & Testing</h1>
-          <p className="text-[12px] text-ink-500 dark:text-slate-400 mt-0.5">
+          <h1 className="text-[21px] font-semibold tracking-tight">Sampling &amp; testing</h1>
+          <p className="text-[12.5px] text-ink-500 dark:text-slate-400 mt-1">
             {items.length} controls · 95% confidence / 5% tolerable rate
           </p>
         </div>
@@ -99,7 +99,7 @@ export default function SamplingView() {
         </div>
       )}
 
-      <div className="rounded-lg border border-rule dark:border-navy-700 bg-white dark:bg-navy-950 overflow-hidden">
+      <div className="rounded-xl border border-rule dark:border-navy-700 bg-white dark:bg-navy-950 shadow-card dark:shadow-none overflow-hidden">
         <table className="data-table">
           <thead>
             <tr>

@@ -14,6 +14,10 @@ export type Category =
   | 'Access Management'
   | 'Change Management'
   | 'IT Operations'
+  | 'Endpoint & MDM'
+  | 'Security Posture'
+  | 'Cloud Security Posture'
+  | 'AI Governance'
   | 'Third Parties'
   | 'Licensing'
   | 'IT Spend'
@@ -43,6 +47,10 @@ export interface PBCItem {
   tscMapping: TSC[];
   internalComments: string | null;
   linkedItems: number[];
+  /** Legal entity this request is scoped to. `null` = group-wide. */
+  entityId: number | null;
+  /** Stable slug of the library item this row was seeded from, if any. */
+  templateKey: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -5,12 +5,13 @@ import { InlineSelect, InlineText } from '@/components/tables/InlineEdit';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SavedFlash, useSaveIndicator } from '@/components/tables/SavedIndicator';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, RefreshCw } from 'lucide-react';
 import HelpStrip from '@/components/ui/HelpStrip';
 
 export default function EntitiesView() {
   const [items, setItems] = React.useState<Entity[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [syncing, setSyncing] = React.useState(false);
   const { savedKey, flash } = useSaveIndicator();
 
   React.useEffect(() => { load(); }, []);
@@ -30,26 +31,45 @@ export default function EntitiesView() {
     setItems(prev => [...prev, e]);
   }
   async function del(id: number) {
-    if (!confirm('Delete this entity row?')) return;
+    if (!confirm('Delete this entity row?\n\nAny PBC items scoped to this entity become group-wide (they are not deleted).')) return;
     await fetch(`/api/entities/${id}`, { method: 'DELETE' });
     setItems(prev => prev.filter(i => i.id !== id));
+  }
+  // Generate the per-entity PBC instances for every in-scope entity.
+  async function syncPbc() {
+    setSyncing(true);
+    try {
+      const r = await fetch('/api/entities/sync-pbc', { method: 'POST' });
+      if (r.ok) {
+        const { created } = await r.json() as { created: number };
+        alert(created > 0
+          ? `Added ${created} per-entity PBC item${created === 1 ? '' : 's'} for your in-scope entities.`
+          : 'PBC list is already in sync with your in-scope entities — nothing to add.');
+      }
+    } finally {
+      setSyncing(false);
+    }
   }
 
   const inScope = items.filter(i => i.inScope === 'Y').length;
   const populated = items.filter(i => i.legalEntity).length;
 
   return (
-    <div className="px-6 py-6 max-w-[1500px] mx-auto space-y-4">
+    <div className="px-6 py-7 max-w-[1500px] mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[18px] font-semibold tracking-tight">Entity Scope</h1>
-          <p className="text-[12px] text-ink-500 dark:text-slate-400 mt-0.5">
+          <h1 className="text-[21px] font-semibold tracking-tight">Entity scope</h1>
+          <p className="text-[12.5px] text-ink-500 dark:text-slate-400 mt-1">
             {populated} entities · {inScope} in scope
           </p>
         </div>
         <div className="flex items-center gap-2">
           <SavedFlash savedKey={savedKey} />
-          <Button variant="primary" size="sm" onClick={add}><Plus className="w-3 h-3" /> Add entity</Button>
+          <Button variant="secondary" size="sm" onClick={syncPbc} disabled={syncing} title="Create per-entity PBC items for every in-scope entity">
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Generating…' : 'Generate per-entity PBC items'}
+          </Button>
+          <Button variant="primary" size="sm" onClick={add}><Plus className="w-3.5 h-3.5" /> Add entity</Button>
         </div>
       </div>
 
@@ -64,7 +84,7 @@ export default function EntitiesView() {
         out of scope; the rationale matters more than the row count.
       </HelpStrip>
 
-      <div className="rounded-lg border border-rule dark:border-navy-700 bg-white dark:bg-navy-950 overflow-hidden">
+      <div className="rounded-xl border border-rule dark:border-navy-700 bg-white dark:bg-navy-950 shadow-card dark:shadow-none overflow-hidden">
         <table className="data-table">
           <thead>
             <tr>
