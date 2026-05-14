@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SavedFlash, useSaveIndicator } from '@/components/tables/SavedIndicator';
 import { Plus, Trash2 } from 'lucide-react';
+import HelpStrip from '@/components/ui/HelpStrip';
 
 export default function EntitiesView() {
   const [items, setItems] = React.useState<Entity[]>([]);
@@ -38,8 +39,8 @@ export default function EntitiesView() {
   const populated = items.filter(i => i.legalEntity).length;
 
   return (
-    <div className="px-6 py-6 max-w-[1500px] mx-auto">
-      <div className="flex items-center justify-between mb-5">
+    <div className="px-6 py-6 max-w-[1500px] mx-auto space-y-4">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[18px] font-semibold tracking-tight">Entity Scope</h1>
           <p className="text-[12px] text-ink-500 dark:text-slate-400 mt-0.5">
@@ -51,6 +52,17 @@ export default function EntitiesView() {
           <Button variant="primary" size="sm" onClick={add}><Plus className="w-3 h-3" /> Add entity</Button>
         </div>
       </div>
+
+      <HelpStrip
+        storageKey="entities-list"
+        title="What is entity scope?"
+      >
+        Each row is a legal entity (e.g. HQ, EU subsidiary). For each we capture
+        whether it&apos;s <strong>in scope</strong> for this engagement and a
+        short <strong>rationale</strong> — that&apos;s how we&apos;ll defend our
+        scope decisions in the audit file. Add a row per entity even if it&apos;s
+        out of scope; the rationale matters more than the row count.
+      </HelpStrip>
 
       <div className="rounded-lg border border-rule dark:border-navy-700 bg-white dark:bg-navy-950 overflow-hidden">
         <table className="data-table">
@@ -70,6 +82,16 @@ export default function EntitiesView() {
           </thead>
           <tbody>
             {loading && Array.from({ length: 6 }).map((_, i) => <tr key={i}><td colSpan={10} className="p-0"><div className="h-[34px] mx-3 my-1 skeleton" /></td></tr>)}
+            {!loading && items.length === 0 && (
+              <tr><td colSpan={10} className="text-center py-12 text-[13px]">
+                <div className="max-w-md mx-auto">
+                  <div className="text-ink-700 dark:text-slate-300 font-medium">No entities yet</div>
+                  <p className="text-[12px] text-ink-500 mt-1 leading-relaxed">
+                    Click <em>Add entity</em> above to start. The first entity is usually the parent / HQ; add subsidiaries and acquisitions next.
+                  </p>
+                </div>
+              </td></tr>
+            )}
             {!loading && items.map(e => (
               <tr key={e.id}>
                 <td className="text-ink-500 tabular">{e.num}</td>

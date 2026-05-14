@@ -80,6 +80,8 @@ export interface Walkthrough {
   id: number;
   num: number;
   processArea: string;
+  description: string | null;
+  objective: string | null;
   keyTopics: string;
   attendees: string;
   proposedDate: string | null;

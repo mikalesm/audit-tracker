@@ -45,6 +45,10 @@ export interface LibraryAccessRequest {
 
 export interface LibraryWalkthrough {
   processArea: string;
+  /** One-paragraph narrative describing what the walkthrough covers. */
+  description: string;
+  /** What the auditor is trying to confirm in this session. */
+  objective: string;
   keyTopics: string;
   attendees: string;
   durationMin: number;
@@ -158,15 +162,42 @@ const ACCESS: LibraryAccessRequest[] = [
 
 // ---- Walkthroughs ----
 const WALKS: LibraryWalkthrough[] = [
-  { processArea: 'IT Governance', keyTopics: 'Org structure, steering committee cadence, policy ownership, exception process', attendees: 'CIO / IT Director', durationMin: 60 },
-  { processArea: 'Logical Access — Joiner / Mover / Leaver', keyTopics: 'Provisioning flow per app, manager approval, periodic review, deprovisioning SLAs', attendees: 'IAM Lead, HRIS owner', durationMin: 90 },
-  { processArea: 'Privileged Access', keyTopics: 'PAM tooling, break-glass procedures, admin account review', attendees: 'IT Security Lead', durationMin: 60 },
-  { processArea: 'Change Management', keyTopics: 'Ticket lifecycle, approvals, CAB, emergency changes, post-implementation review', attendees: 'Release Manager, Eng Lead', durationMin: 90 },
-  { processArea: 'Software Development Lifecycle', keyTopics: 'Branching strategy, code review, automated testing, deploy gates', attendees: 'Engineering Manager', durationMin: 60 },
-  { processArea: 'Backup & Restore', keyTopics: 'Backup schedule, retention, restore tests, offsite copies', attendees: 'Infra / Ops Lead', durationMin: 45 },
-  { processArea: 'Vulnerability & Patch Management', keyTopics: 'Scanning cadence, SLA per severity, exception tracking', attendees: 'IT Security Lead', durationMin: 60 },
-  { processArea: 'Incident Response', keyTopics: 'Detection, triage, comms, post-mortem cadence', attendees: 'IR Lead', durationMin: 60 },
-  { processArea: 'Third-Party Risk Management', keyTopics: 'Onboarding due diligence, ongoing monitoring, contract terms', attendees: 'Vendor Risk Manager', durationMin: 60 },
+  { processArea: 'IT Governance',
+    description: 'A working session with IT leadership to understand how IT is run end-to-end: how decisions get made, where policy ownership sits, and how exceptions are handled. This is usually the first walkthrough we run and sets context for everything else.',
+    objective: 'Confirm that an IT governance framework exists, is owned at the right level, and that policies are reviewed on a regular cadence.',
+    keyTopics: 'Org structure, steering committee cadence, policy ownership, exception process', attendees: 'CIO / IT Director', durationMin: 60 },
+  { processArea: 'Logical Access — Joiner / Mover / Leaver',
+    description: 'Walk through how a user gains, changes, and loses access to in-scope applications across the full employment lifecycle. We will trace one of each (joiner, mover, leaver) in the relevant system to see the control operating.',
+    objective: 'Confirm the end-to-end access lifecycle is designed, approved, executed, and reviewed — and that deprovisioning happens within an acceptable SLA.',
+    keyTopics: 'Provisioning flow per app, manager approval, periodic review, deprovisioning SLAs', attendees: 'IAM Lead, HRIS owner', durationMin: 90 },
+  { processArea: 'Privileged Access',
+    description: 'Walk through how administrative access to production systems is granted, used, monitored, and revoked. Covers normal admin access, break-glass / firefighter accounts, and any privileged access management tooling.',
+    objective: 'Confirm that privileged access is restricted to a small, named population; that elevated sessions are logged; and that break-glass procedures are documented and tested.',
+    keyTopics: 'PAM tooling, break-glass procedures, admin account review', attendees: 'IT Security Lead', durationMin: 60 },
+  { processArea: 'Change Management',
+    description: 'Walk through the lifecycle of a typical production-impacting change, from ticket creation to post-implementation review. We pick one normal change and one emergency change to compare.',
+    objective: 'Confirm that production changes are approved before deployment, that segregation of duties is enforced, and that emergency changes are reviewed after the fact.',
+    keyTopics: 'Ticket lifecycle, approvals, CAB, emergency changes, post-implementation review', attendees: 'Release Manager, Eng Lead', durationMin: 90 },
+  { processArea: 'Software Development Lifecycle',
+    description: 'Walk through how a code change moves from a developer commit to production: branching, peer review, automated testing, deployment gates, and who can bypass each step.',
+    objective: 'Confirm that code reaching production has been peer-reviewed and that automated controls (CI, branch protection) are in place to enforce SoD between develop and deploy.',
+    keyTopics: 'Branching strategy, code review, automated testing, deploy gates', attendees: 'Engineering Manager', durationMin: 60 },
+  { processArea: 'Backup & Restore',
+    description: 'Walk through the backup posture for in-scope critical systems: what is backed up, where backups live, how long they are retained, and how a restore actually plays out.',
+    objective: 'Confirm that backups exist for all critical systems and that at least one successful restore test has been performed within the audit period.',
+    keyTopics: 'Backup schedule, retention, restore tests, offsite copies', attendees: 'Infra / Ops Lead', durationMin: 45 },
+  { processArea: 'Vulnerability & Patch Management',
+    description: 'Walk through how vulnerabilities are discovered, prioritised, tracked, and remediated across servers, endpoints, and applications. Covers both the tooling and the human workflow.',
+    objective: 'Confirm that vulnerabilities are identified on a regular cadence and remediated within SLA, with documented exceptions for anything outstanding.',
+    keyTopics: 'Scanning cadence, SLA per severity, exception tracking', attendees: 'IT Security Lead', durationMin: 60 },
+  { processArea: 'Incident Response',
+    description: 'Walk through how an incident is detected, triaged, communicated, and closed out. We will reference one or two real incidents from the audit period.',
+    objective: 'Confirm that the incident response plan is documented, executed in practice, and that high-severity incidents drive a post-mortem.',
+    keyTopics: 'Detection, triage, comms, post-mortem cadence', attendees: 'IR Lead', durationMin: 60 },
+  { processArea: 'Third-Party Risk Management',
+    description: 'Walk through how new vendors are onboarded, how they are monitored over time, and how contractual security and data protection terms are negotiated.',
+    objective: 'Confirm that critical vendors are subject to due diligence at onboarding and on an ongoing basis, with current SOC 2 / risk assessments on file.',
+    keyTopics: 'Onboarding due diligence, ongoing monitoring, contract terms', attendees: 'Vendor Risk Manager', durationMin: 60 },
 ];
 
 // ---- Entities (empty/example placeholders) ----

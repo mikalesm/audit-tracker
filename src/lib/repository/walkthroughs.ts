@@ -3,7 +3,9 @@ import type { Walkthrough } from '@/types';
 import { logActivity } from './activity';
 
 type Row = {
-  id: number; engagement_id: number; num: number; process_area: string; key_topics: string; attendees: string;
+  id: number; engagement_id: number; num: number; process_area: string;
+  description: string | null; objective: string | null;
+  key_topics: string; attendees: string;
   proposed_date: string | Date | null; duration_min: number | null; status: string;
   notes: string | null; updated_at: string | Date;
 };
@@ -16,7 +18,9 @@ function dateOnly(v: string | Date | null): string | null {
 
 function toItem(r: Row): Walkthrough {
   return {
-    id: Number(r.id), num: Number(r.num), processArea: r.process_area, keyTopics: r.key_topics,
+    id: Number(r.id), num: Number(r.num), processArea: r.process_area,
+    description: r.description, objective: r.objective,
+    keyTopics: r.key_topics,
     attendees: r.attendees, proposedDate: dateOnly(r.proposed_date),
     durationMin: r.duration_min === null ? null : Number(r.duration_min),
     status: r.status as Walkthrough['status'], notes: r.notes,
@@ -36,6 +40,7 @@ export async function listWalkthroughs(engagementId: number): Promise<Walkthroug
 const COLS: Record<string, string> = {
   status: 'status', proposedDate: 'proposed_date', durationMin: 'duration_min',
   notes: 'notes', processArea: 'process_area', keyTopics: 'key_topics', attendees: 'attendees',
+  description: 'description', objective: 'objective',
 };
 const DATE_COLS = new Set(['proposed_date']);
 const INT_COLS = new Set(['duration_min']);

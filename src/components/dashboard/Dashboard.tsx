@@ -47,6 +47,8 @@ export default function Dashboard({ settings }: { settings: EngagementSettings }
     );
   }
 
+  const firstRun = data.kpi.total === 0;
+
   return (
     <div className="px-6 py-6 max-w-[1500px] mx-auto">
       {/* Header */}
@@ -63,6 +65,42 @@ export default function Dashboard({ settings }: { settings: EngagementSettings }
           <Button variant="secondary" size="sm" onClick={() => window.print()}><Printer className="w-3.5 h-3.5" /> Print</Button>
         </div>
       </div>
+
+      {/* First-run hero — only when the engagement has no PBC items yet */}
+      {firstRun && (
+        <Card className="mb-4 border-blue-200 dark:border-blue-900 bg-blue-50/40 dark:bg-blue-950/20">
+          <CardBody>
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center shrink-0">
+                <FileText className="w-5 h-5 text-blue-700 dark:text-blue-300" />
+              </div>
+              <div className="flex-1">
+                <div className="text-[14px] font-semibold tracking-tight mb-1">
+                  This engagement is empty — let&apos;s give it some content
+                </div>
+                <p className="text-[12.5px] text-ink-700 dark:text-slate-300 leading-relaxed mb-3">
+                  No PBC items, walkthroughs, or access requests yet. Pick one of these
+                  to seed the engagement:
+                </p>
+                <ol className="text-[12.5px] text-ink-700 dark:text-slate-300 space-y-1.5 list-decimal pl-5">
+                  <li>
+                    <Link href="/admin/templates" className="text-navy-700 dark:text-navy-300 underline">Create a template</Link>
+                    {' '}with the categories you usually audit, then create new engagements from it.
+                  </li>
+                  <li>
+                    <Link href="/settings" className="text-navy-700 dark:text-navy-300 underline">Re-sync from Excel</Link>
+                    {' '}if you already have a workbook with PBC items, walkthroughs, and access requests.
+                  </li>
+                  <li>
+                    Invite the client team via <Link href={`/engagements`} className="text-navy-700 dark:text-navy-300 underline">Engagements → Members</Link>
+                    {' '}so they can see what to upload.
+                  </li>
+                </ol>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       {/* Entity scope panel — only when an entity filter is active */}
       {selectedEntity && (

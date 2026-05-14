@@ -264,9 +264,11 @@ async function seedFromLibrary(
       n += 1;
       await tx.query(
         `INSERT INTO walkthroughs (
-            engagement_id, num, process_area, key_topics, attendees, duration_min
-          ) VALUES ($1, $2, $3, $4, $5, $6)`,
-        [engagementId, n, w.processArea, w.keyTopics, w.attendees, w.durationMin]
+            engagement_id, num, process_area, description, objective,
+            key_topics, attendees, duration_min
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [engagementId, n, w.processArea, w.description, w.objective,
+         w.keyTopics, w.attendees, w.durationMin]
       );
     }
   }
@@ -341,9 +343,11 @@ async function copyTemplateRows(
   // Walkthroughs — reset status / proposed_date / notes.
   await tx.query(
     `INSERT INTO walkthroughs (
-        engagement_id, num, process_area, key_topics, attendees, duration_min
+        engagement_id, num, process_area, description, objective,
+        key_topics, attendees, duration_min
       )
-      SELECT $1, num, process_area, key_topics, attendees, duration_min
+      SELECT $1, num, process_area, description, objective,
+             key_topics, attendees, duration_min
         FROM walkthroughs
        WHERE engagement_id = $2
        ORDER BY num`,

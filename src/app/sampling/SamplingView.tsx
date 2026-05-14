@@ -6,6 +6,7 @@ import { InlineSelect, InlineText } from '@/components/tables/InlineEdit';
 import { StatusPill } from '@/components/ui/badge';
 import { SavedFlash, useSaveIndicator } from '@/components/tables/SavedIndicator';
 import { Calculator, Info } from 'lucide-react';
+import HelpStrip from '@/components/ui/HelpStrip';
 
 // AICPA-style sample size table (95% confidence, 5% tolerable rate, 0% expected) — auditor common reference.
 const SAMPLE_TABLE: { population: number; sample: number }[] = [
@@ -46,8 +47,8 @@ export default function SamplingView() {
   }
 
   return (
-    <div className="px-6 py-6 max-w-[1500px] mx-auto">
-      <div className="flex items-center justify-between mb-5">
+    <div className="px-6 py-6 max-w-[1500px] mx-auto space-y-4">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[18px] font-semibold tracking-tight">Sampling & Testing</h1>
           <p className="text-[12px] text-ink-500 dark:text-slate-400 mt-0.5">
@@ -65,8 +66,19 @@ export default function SamplingView() {
         </div>
       </div>
 
+      <HelpStrip
+        storageKey="sampling-list"
+        title="How sampling works here"
+      >
+        Each row is one <strong>control</strong> we test. For each, we identify
+        the <em>population</em> (e.g. all changes in the period), the
+        <em>sample size</em> (use the calculator on the right for AICPA-style
+        defaults), and the <em>method</em> (random, stratified, all). Update the
+        status as testing progresses and capture findings in the last column.
+      </HelpStrip>
+
       {showHelper && (
-        <div className="mb-4 rounded-lg border border-rule dark:border-navy-700 bg-canvas dark:bg-navy-900 p-4">
+        <div className="rounded-lg border border-rule dark:border-navy-700 bg-canvas dark:bg-navy-900 p-4">
           <div className="flex items-start gap-3">
             <Info className="w-4 h-4 text-ink-500 mt-0.5" />
             <div className="flex-1">
@@ -104,6 +116,17 @@ export default function SamplingView() {
           </thead>
           <tbody>
             {loading && Array.from({ length: 8 }).map((_, i) => <tr key={i}><td colSpan={9} className="p-0"><div className="h-[34px] mx-3 my-1 skeleton" /></td></tr>)}
+            {!loading && items.length === 0 && (
+              <tr><td colSpan={9} className="text-center py-12 text-[13px]">
+                <div className="max-w-md mx-auto">
+                  <div className="text-ink-700 dark:text-slate-300 font-medium">No sampling controls yet</div>
+                  <p className="text-[12px] text-ink-500 mt-1 leading-relaxed">
+                    Sampling controls are usually seeded from a template or imported via{' '}
+                    <a href="/settings" className="text-navy-700 dark:text-navy-300 underline">Settings → Re-sync from Excel</a>.
+                  </p>
+                </div>
+              </td></tr>
+            )}
             {!loading && items.map(s => {
               const suggested = suggestedSample(s.populationSize);
               return (
