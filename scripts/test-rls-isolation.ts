@@ -40,12 +40,13 @@ async function main(): Promise<void> {
   const { a, b } = await withBypassRls(async (db) => {
     await db.query(`DELETE FROM pbc_items WHERE num >= 90000`);
     await db.query(`DELETE FROM engagements WHERE slug IN ('rls-test-a', 'rls-test-b')`);
-    const a = (await db.query<{ id: number }>(
+    // Postgres returns BIGINT as a string — coerce, exactly as toEngagement() does.
+    const a = Number((await db.query<{ id: string }>(
       `INSERT INTO engagements (slug, name, client_name) VALUES ('rls-test-a', 'RLS Test A', 'Client A') RETURNING id`,
-    )).rows[0].id;
-    const b = (await db.query<{ id: number }>(
+    )).rows[0].id);
+    const b = Number((await db.query<{ id: string }>(
       `INSERT INTO engagements (slug, name, client_name) VALUES ('rls-test-b', 'RLS Test B', 'Client B') RETURNING id`,
-    )).rows[0].id;
+    )).rows[0].id);
     await db.query(
       `INSERT INTO pbc_items (engagement_id, num, category, item_requested) VALUES ($1, 90001, 'Governance', 'A-only item')`,
       [a],
