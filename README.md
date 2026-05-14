@@ -27,7 +27,13 @@ npm run migrate    # apply pglite schema once
 npm run dev        # http://localhost:3000
 ```
 
-Then go to **Settings → Re-sync from Excel** and upload `IT_Audit_PBC_Tracker_v2.xlsx` (or any equivalent workbook). 55 PBC items, 19 access requests, 11 walkthroughs, 14 entity rows, 16 sampling controls.
+The same content is baked into the in-code template library, so new
+engagements/templates can be seeded without an Excel. To seed an existing
+engagement from the workbook instead, run `npm run import` (defaults to
+`data/templates/IT_Audit_PBC_Tracker_v2.xlsx`), or go to **Settings → Re-sync
+from Excel** and upload `IT_Audit_PBC_Tracker_v2.xlsx` (or any equivalent
+workbook). 55 PBC items, 19 access requests, 11 walkthroughs, 14 entity rows,
+16 sampling controls.
 
 ### Auth modes
 

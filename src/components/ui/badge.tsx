@@ -1,16 +1,20 @@
 'use client';
 import * as React from 'react';
 import { cn } from '@/lib/utils';
-import { STATUS_COLORS } from '@/lib/utils';
+import { STATUS_COLORS, STATUS_HELP } from '@/lib/utils';
 
 export function StatusPill({ status, className }: { status: string; className?: string }) {
   const c = STATUS_COLORS[status] ?? { bg: 'bg-slate-100', text: 'text-slate-700', ring: 'ring-slate-200' };
+  const help = STATUS_HELP[status];
   return (
-    <span className={cn(
-      'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset',
-      c.bg, c.text, c.ring,
-      className
-    )}>
+    <span
+      title={help ? `${status} — ${help}` : status}
+      className={cn(
+        'inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset',
+        c.bg, c.text, c.ring,
+        className
+      )}
+    >
       {status}
     </span>
   );

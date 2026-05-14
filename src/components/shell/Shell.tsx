@@ -19,36 +19,49 @@ interface NavItem {
   label: string;
   shortcut: string;
   minRole: Role;
+  /** Tooltip shown on the link itself. */
+  hint: string;
 }
 
-const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
+interface NavGroup {
+  label: string;
+  /** Tooltip shown on the group label. */
+  description: string;
+  items: NavItem[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Workspace',
+    description: 'Day-to-day work — the live requests, sessions, and access list.',
     items: [
-      { href: '/',             label: 'Dashboard',    shortcut: 'g d', minRole: 'client_reviewer' },
-      { href: '/pbc',          label: 'PBC List',     shortcut: 'g p', minRole: 'client_reviewer' },
-      { href: '/walkthroughs', label: 'Walkthroughs', shortcut: 'g w', minRole: 'client_reviewer' },
-      { href: '/access',       label: 'Access',       shortcut: 'g a', minRole: 'client_reviewer' },
+      { href: '/',             label: 'Dashboard',    shortcut: 'g d', minRole: 'client_reviewer', hint: 'Engagement overview & progress' },
+      { href: '/pbc',          label: 'PBC List',     shortcut: 'g p', minRole: 'client_reviewer', hint: 'Provided-By-Client evidence requests' },
+      { href: '/walkthroughs', label: 'Walkthroughs', shortcut: 'g w', minRole: 'client_reviewer', hint: 'Working sessions to observe controls' },
+      { href: '/access',       label: 'Access',       shortcut: 'g a', minRole: 'client_reviewer', hint: 'Read-only access we need in client systems' },
     ],
   },
   {
     label: 'Scope',
+    description: "What's being audited — the entities and controls in play.",
     items: [
-      { href: '/entities', label: 'Entities', shortcut: 'g e', minRole: 'client_reviewer' },
-      { href: '/sampling', label: 'Sampling', shortcut: 'g s', minRole: 'client_reviewer' },
+      { href: '/entities', label: 'Entities', shortcut: 'g e', minRole: 'client_reviewer', hint: 'Legal entities in/out of scope and the rationale' },
+      { href: '/sampling', label: 'Sampling', shortcut: 'g s', minRole: 'client_reviewer', hint: 'Controls being tested, populations, samples' },
     ],
   },
   {
     label: 'Audit',
+    description: 'Audit-team records that clients do not see.',
     items: [
-      { href: '/activity', label: 'Activity', shortcut: 'g t', minRole: 'auditor' },
-      { href: '/reports',  label: 'Reports',  shortcut: 'g r', minRole: 'auditor' },
+      { href: '/activity', label: 'Activity', shortcut: 'g t', minRole: 'auditor', hint: 'Audit-team activity log' },
+      { href: '/reports',  label: 'Reports',  shortcut: 'g r', minRole: 'auditor', hint: 'Export the PBC tracker, evidence, and findings' },
     ],
   },
   {
     label: 'Admin',
+    description: 'Engagement settings — only the audit lead can edit these.',
     items: [
-      { href: '/settings', label: 'Settings', shortcut: 'g ,', minRole: 'auditor_lead' },
+      { href: '/settings', label: 'Settings', shortcut: 'g ,', minRole: 'auditor_lead', hint: 'Engagement settings & Excel re-sync' },
     ],
   },
 ];
@@ -221,13 +234,14 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
             {visibleGroups.map((g, gi) => (
               <React.Fragment key={g.label}>
                 {gi > 0 && <span className="mx-2 h-4 w-px bg-rule dark:bg-navy-700 shrink-0" aria-hidden />}
-                <div className="flex items-center gap-0.5 shrink-0">
+                <div className="flex items-center gap-0.5 shrink-0" title={g.description}>
                   {g.items.map(item => {
                     const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
                     return (
                       <Link
                         key={item.href}
                         href={item.href}
+                        title={item.hint}
                         className={cn(
                           'px-2.5 h-7 inline-flex items-center rounded text-[13px] transition-colors whitespace-nowrap',
                           active
@@ -260,8 +274,13 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
             <div className="px-4 py-3 space-y-3">
               {visibleGroups.map(g => (
                 <div key={g.label}>
-                  <div className="text-[10px] uppercase tracking-wider font-semibold text-ink-500 dark:text-slate-400 mb-1">
-                    {g.label}
+                  <div className="mb-1">
+                    <div className="text-[10px] uppercase tracking-wider font-semibold text-ink-500 dark:text-slate-400">
+                      {g.label}
+                    </div>
+                    <div className="text-[10.5px] text-ink-500 dark:text-slate-400 leading-snug">
+                      {g.description}
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-1">
                     {g.items.map(item => {
@@ -277,7 +296,10 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
                               : 'text-ink-700 hover:bg-canvas dark:text-slate-300 dark:hover:bg-navy-900'
                           )}
                         >
-                          {item.label}
+                          <div>{item.label}</div>
+                          <div className="text-[10px] text-ink-500 dark:text-slate-400 leading-tight mt-0.5">
+                            {item.hint}
+                          </div>
                         </Link>
                       );
                     })}

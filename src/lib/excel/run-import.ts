@@ -3,7 +3,7 @@ import { importFromExcelPath } from './import';
 import { closeDb, getDb } from '@/lib/db';
 import { runMigrations } from '@/lib/migrations/runner';
 
-const file = process.argv[2] || path.join(process.cwd(), 'data', 'import', 'IT_Audit_PBC_Tracker_v2.xlsx');
+const file = process.argv[2] || path.join(process.cwd(), 'data', 'templates', 'IT_Audit_PBC_Tracker_v2.xlsx');
 const slug = process.argv[3] || 'audit1';
 
 (async () => {

@@ -1,23 +1,10 @@
 import * as XLSX from 'xlsx';
 import * as fs from 'fs';
 import { getDb } from '@/lib/db';
-import type { TSC } from '@/types';
+import { DEFAULT_TSC_BY_CATEGORY } from '@/lib/templates/library';
 
 // xlsx ESM build does not auto-detect Node fs; wire it up so readFile works.
 XLSX.set_fs(fs);
-
-const DEFAULT_TSC_BY_CATEGORY: Record<string, TSC[]> = {
-  'Governance': ['Security'],
-  'Entities & Systems': ['Security'],
-  'Access Management': ['Security', 'Confidentiality'],
-  'Change Management': ['Security', 'Processing Integrity'],
-  'IT Operations': ['Availability', 'Security'],
-  'Third Parties': ['Security', 'Confidentiality'],
-  'Licensing': ['Security'],
-  'IT Spend': [],
-  'SOC 2 Readiness': ['Security', 'Availability', 'Confidentiality'],
-  'Physical & Environmental': ['Security', 'Availability'],
-};
 
 export interface ImportSummary {
   pbc: { added: number; updatedStatic: number; total: number };
@@ -99,7 +86,7 @@ async function importFromWorkbook(engagementId: number, wb: XLSX.WorkBook): Prom
         const num = toInt(r['#']);
         if (num === null) continue;
         const cat = clean(r['Category']) || 'Governance';
-        const tsc = DEFAULT_TSC_BY_CATEGORY[cat] || [];
+        const tsc = DEFAULT_TSC_BY_CATEGORY[cat as keyof typeof DEFAULT_TSC_BY_CATEGORY] || [];
         const existing = (await tx.query<{ id: number }>(
           'SELECT id FROM pbc_items WHERE engagement_id = $1 AND num = $2',
           [engagementId, num]
@@ -178,22 +165,48 @@ async function importFromWorkbook(engagementId: number, wb: XLSX.WorkBook): Prom
       for (const r of rows) {
         const num = toInt(r['#']);
         if (num === null) continue;
-        const result = await tx.query(
-          `INSERT INTO walkthroughs (engagement_id, num, process_area, key_topics, attendees, proposed_date, duration_min, status, notes)
-           VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8, $9)
-           ON CONFLICT (engagement_id, num) DO NOTHING`,
-          [
-            engagementId, num,
-            clean(r['Process Area']) ?? '',
-            clean(r['Key Topics']) ?? '',
-            clean(r['Client Attendees Needed']) ?? '',
-            clean(r['Proposed Date']),
-            toInt(r['Duration (min)']),
-            clean(r['Status']) ?? 'Not Scheduled',
-            clean(r['Notes']),
-          ]
-        );
-        if (result.rowCount > 0) summary.walkthroughs.added++;
+        // Description / Objective are optional columns — workbooks exported
+        // before they existed simply won't carry them.
+        const existing = (await tx.query<{ id: number }>(
+          'SELECT id FROM walkthroughs WHERE engagement_id = $1 AND num = $2',
+          [engagementId, num]
+        )).rows[0];
+        if (existing) {
+          // Re-sync: overlay the structural columns onto the existing row.
+          await tx.query(
+            `UPDATE walkthroughs
+             SET process_area = $3, description = $4, objective = $5,
+                 key_topics = $6, attendees = $7, duration_min = $8
+             WHERE engagement_id = $1 AND num = $2`,
+            [
+              engagementId, num,
+              clean(r['Process Area']) ?? '',
+              clean(r['Description']),
+              clean(r['Objective']),
+              clean(r['Key Topics']) ?? '',
+              clean(r['Client Attendees Needed']) ?? '',
+              toInt(r['Duration (min)']),
+            ]
+          );
+        } else {
+          await tx.query(
+            `INSERT INTO walkthroughs (engagement_id, num, process_area, description, objective, key_topics, attendees, proposed_date, duration_min, status, notes)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::date, $9, $10, $11)`,
+            [
+              engagementId, num,
+              clean(r['Process Area']) ?? '',
+              clean(r['Description']),
+              clean(r['Objective']),
+              clean(r['Key Topics']) ?? '',
+              clean(r['Client Attendees Needed']) ?? '',
+              clean(r['Proposed Date']),
+              toInt(r['Duration (min)']),
+              clean(r['Status']) ?? 'Not Scheduled',
+              clean(r['Notes']),
+            ]
+          );
+          summary.walkthroughs.added++;
+        }
       }
       summary.walkthroughs.total = Number((await tx.query<{ c: number }>(
         'SELECT COUNT(*)::int AS c FROM walkthroughs WHERE engagement_id = $1',

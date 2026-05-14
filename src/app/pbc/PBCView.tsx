@@ -2,14 +2,17 @@
 import * as React from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { cn, STATUSES, PRIORITIES, CATEGORIES, TSC_VALUES, PRIORITY_BORDER, isOverdue, formatDate } from '@/lib/utils';
+import { CATEGORY_COVERAGE } from '@/lib/templates/library';
 import type { PBCItem } from '@/types';
 import { InlineDate, InlineSelect, InlineText } from '@/components/tables/InlineEdit';
-import { StatusPill } from '@/components/ui/badge';
+import { StatusPill, Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SavedFlash, useSaveIndicator } from '@/components/tables/SavedIndicator';
 import PBCDetailPanel from './PBCDetailPanel';
 import { Filter, ChevronDown, X, ListFilter, Download, BookmarkPlus, Bookmark, Trash2 } from 'lucide-react';
 import { useEntityFilter } from '@/components/shell/state';
+import HelpStrip from '@/components/ui/HelpStrip';
+import ViewToggle, { useViewMode } from '@/components/tables/ViewToggle';
 
 type SortKey = 'num' | 'category' | 'priority' | 'status' | 'dateRequested' | 'dateReceived' | 'ownerClient';
 type SortDir = 'asc' | 'desc';
@@ -80,6 +83,7 @@ export default function PBCView() {
   const [openId, setOpenId] = React.useState<number | null>(initialId);
   const [cursor, setCursor] = React.useState<number | null>(null);
   const [role, setRole] = React.useState<'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer'>('auditor_lead');
+  const [viewMode, setViewMode] = useViewMode('pbc', 'cards');
   const { savedKey, flash } = useSaveIndicator();
   const undoStack = React.useRef<UndoOp[]>([]);
   const redoStack = React.useRef<UndoOp[]>([]);
@@ -359,11 +363,23 @@ export default function PBCView() {
           </div>
           <div className="flex items-center gap-2">
             <SavedFlash savedKey={savedKey} />
+            <ViewToggle mode={viewMode} onChange={setViewMode} />
             <a href="/api/export" className="inline-flex">
               <Button variant="secondary" size="sm"><Download className="w-3.5 h-3.5" /> Export</Button>
             </a>
           </div>
         </div>
+
+        <HelpStrip
+          storageKey="pbc-list"
+          title="What is the PBC list?"
+          className="mb-3"
+        >
+          PBC = <em>Provided By Client</em>. Each row is one piece of evidence the auditor
+          needs. Click any item to see <strong>why it&apos;s being requested</strong>,
+          what format is expected, and to upload (or review) the evidence. Switch
+          to <em>Table</em> view above for a dense spreadsheet layout.
+        </HelpStrip>
         <div className="flex items-center gap-2 flex-wrap">
           <input
             value={search}
@@ -427,6 +443,124 @@ export default function PBCView() {
         )}
       </div>
 
+      {viewMode === 'cards' && (
+        <div className="flex-1 overflow-auto bg-canvas/40 dark:bg-navy-950 px-6 py-5">
+          {loading && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-[1100px] mx-auto">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-[120px] skeleton rounded-lg" />
+              ))}
+            </div>
+          )}
+          {!loading && filtered.length === 0 && (
+            <div className="max-w-md mx-auto text-center py-12 text-[13px]">
+              {items.length === 0 ? (
+                <>
+                  <div className="text-ink-700 dark:text-slate-300 font-medium">No PBC items yet</div>
+                  {role === 'auditor_lead' ? (
+                    <p className="text-[12px] text-ink-500 mt-1 leading-relaxed">
+                      Either pick a template when you next create an audit (
+                      <a href="/engagements/new" className="text-navy-700 dark:text-navy-300 underline">new audit</a>
+                      ), or upload your standard Excel here:{' '}
+                      <a href="/settings" className="text-navy-700 dark:text-navy-300 underline">Settings → Re-sync from Excel</a>.
+                    </p>
+                  ) : role === 'auditor' ? (
+                    <p className="text-[12px] text-ink-500 mt-1 leading-relaxed">
+                      Ask the audit lead to import the PBC list from Excel via Settings.
+                    </p>
+                  ) : (
+                    <p className="text-[12px] text-ink-500 mt-1 leading-relaxed">
+                      The auditor is still setting things up. Items you&apos;ll need to provide will appear here.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-ink-500">
+                  No items match the current filters.{' '}
+                  <button
+                    onClick={() => {
+                      setSearch(''); setFilterCats([]); setFilterPrios([]); setFilterStatuses([]);
+                      setFilterOwners([]); setFilterTSC([]);
+                      setReqFrom(''); setReqTo(''); setRecFrom(''); setRecTo('');
+                      setNotesMode('any'); setView('all');
+                    }}
+                    className="underline text-navy-700 dark:text-navy-300"
+                  >Clear filters</button>
+                </p>
+              )}
+            </div>
+          )}
+          {!loading && filtered.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-w-[1500px] mx-auto">
+              {filtered.map(item => {
+                const overdue = isOverdue(item);
+                const missingContext = !item.whyPurpose || !item.formatExpected;
+                const isAuditor = role === 'auditor' || role === 'auditor_lead';
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setOpenId(item.id)}
+                    className={cn(
+                      'group text-left rounded-lg border bg-white dark:bg-navy-950 p-4 transition-all hover:border-navy-400 hover:shadow-sm dark:hover:border-navy-500',
+                      'border-rule dark:border-navy-700',
+                      overdue && 'border-l-4 border-l-danger',
+                      !overdue && item.priority === 'High' && 'border-l-4 border-l-amber-500',
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="text-[10.5px] uppercase tracking-wider text-ink-500 dark:text-slate-400 font-mono">
+                        #{item.num} ·{' '}
+                        <span
+                          className="underline decoration-dotted underline-offset-2"
+                          title={CATEGORY_COVERAGE[item.category as keyof typeof CATEGORY_COVERAGE]}
+                        >
+                          {item.category}
+                        </span>
+                      </div>
+                      <StatusPill status={item.status} />
+                    </div>
+                    <div className="text-[13.5px] font-medium leading-snug text-ink-900 dark:text-slate-100 line-clamp-2 mb-1.5">
+                      {item.itemRequested}
+                    </div>
+                    {item.whyPurpose ? (
+                      <p className="text-[12px] text-ink-500 dark:text-slate-400 leading-relaxed line-clamp-2 mb-2.5">
+                        <span className="font-semibold text-ink-700 dark:text-slate-300">Why:</span> {item.whyPurpose}
+                      </p>
+                    ) : (
+                      <p className="text-[12px] text-ink-500 italic mb-2.5">
+                        {isAuditor
+                          ? 'No "why" added yet — click to fill it in so the client understands.'
+                          : 'Auditor hasn\'t explained this yet — click to view & ask.'}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                      <Badge tone={item.priority === 'High' ? 'danger' : item.priority.startsWith('Medium') ? 'gold' : 'neutral'}>
+                        {item.priority}
+                      </Badge>
+                      {overdue && <Badge tone="danger">Overdue</Badge>}
+                      {item.ownerClient && (
+                        <span className="text-ink-500 dark:text-slate-400">
+                          Owner: <span className="text-ink-700 dark:text-slate-300">{item.ownerClient}</span>
+                        </span>
+                      )}
+                      {!item.ownerClient && (
+                        <span className="text-ink-500 italic">Unassigned</span>
+                      )}
+                      {isAuditor && missingContext && (
+                        <span className="ml-auto text-amber-700 dark:text-amber-300 text-[10.5px]" title="Missing why or format">
+                          ⚠ missing context
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {viewMode === 'table' && (
       <div className="flex-1 overflow-auto bg-white dark:bg-navy-950">
         <table className="data-table">
           <thead>
@@ -516,7 +650,10 @@ export default function PBCView() {
                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(item.id)} onClick={e => e.stopPropagation()} />
                   </td>
                   <td className="sticky left-8 z-10 bg-white dark:bg-navy-950 group-hover:bg-canvas/70 dark:group-hover:bg-navy-900/40 text-ink-500 tabular w-12">{item.num}</td>
-                  <td className="sticky left-20 z-10 bg-white dark:bg-navy-950 group-hover:bg-canvas/70 dark:group-hover:bg-navy-900/40 text-[12px] text-ink-700 dark:text-slate-300 truncate max-w-[180px]">
+                  <td
+                    className="sticky left-20 z-10 bg-white dark:bg-navy-950 group-hover:bg-canvas/70 dark:group-hover:bg-navy-900/40 text-[12px] text-ink-700 dark:text-slate-300 truncate max-w-[180px]"
+                    title={CATEGORY_COVERAGE[item.category as keyof typeof CATEGORY_COVERAGE]}
+                  >
                     {item.category}
                   </td>
                   <td>
@@ -565,6 +702,7 @@ export default function PBCView() {
           </tbody>
         </table>
       </div>
+      )}
 
       {openItem && (
         <PBCDetailPanel

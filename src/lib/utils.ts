@@ -64,6 +64,26 @@ export const WALKTHROUGH_STATUSES = ['Not Scheduled', 'Scheduled', 'In Progress'
 export const TEST_STATUSES = ['Not Started', 'In Progress', 'Tested', 'Findings', 'N/A'] as const;
 export const TSC_VALUES = ['Security', 'Availability', 'Confidentiality', 'Processing Integrity', 'Privacy'] as const;
 
+// Plain-language meaning of each status — surfaced as tooltips so users don't
+// have to guess. Transcribed from the workbook's Cover-sheet status legend.
+export const STATUS_HELP: Record<string, string> = {
+  'Not Started':   'Request not yet sent',
+  'Requested':     'Sent to client, awaiting response',
+  'In Progress':   'Client preparing / partial received',
+  'Received':      'Evidence received, not yet reviewed',
+  'Reviewed':      'Evidence received and reviewed',
+  'N/A':           'Not applicable for this engagement',
+  'Not Requested': 'Access not yet requested from the client',
+  'Provisioned':   'Access has been granted',
+  'Revoked':       'Access has been removed',
+  'Not Scheduled': 'Walkthrough not yet on the calendar',
+  'Scheduled':     'Walkthrough booked with a date',
+  'Completed':     'Walkthrough has taken place',
+  'Cancelled':     'Walkthrough will not take place',
+  'Tested':        'Control tested, no exceptions',
+  'Findings':      'Testing surfaced exceptions / findings',
+};
+
 export const STATUS_COLORS: Record<string, { bg: string; text: string; ring: string }> = {
   'Not Started': { bg: 'bg-slate-100', text: 'text-slate-700', ring: 'ring-slate-200' },
   'Requested':   { bg: 'bg-navy-100',  text: 'text-navy-800', ring: 'ring-navy-200' },

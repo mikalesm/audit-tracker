@@ -1,13 +1,20 @@
 // Master library for engagement templates.
 //
-// This is a generic IT-audit starter set baked into the source so a fresh
-// install can create useful templates without uploading an Excel. Each
-// platform-admin can override / extend the content per-template using
-// Settings → Re-sync from Excel inside the template engagement.
+// This is the firm's real IT-audit programme, transcribed from the
+// authoritative workbook `IT_Audit_PBC_Tracker_v2.xlsx` (committed at
+// `data/templates/`). A fresh install can create useful templates without
+// uploading the Excel. Each platform-admin can still override / extend the
+// content per-template using Settings → Re-sync from Excel inside the
+// template engagement.
 //
-// Categories MUST match the Category union in src/types/index.ts and the
-// keys in DEFAULT_TSC_BY_CATEGORY at src/lib/excel/import.ts so the TSC
-// auto-mapping continues to work when items are later imported on top.
+// Counts mirror the workbook: 55 PBC items across 10 categories, 19 access
+// requests, 11 walkthroughs, 16 sampling controls. Entities are intentionally
+// illustrative (the workbook's Entity Scope sheet is a blank per-client
+// template).
+//
+// Categories MUST match the Category union in src/types/index.ts. The TSC
+// auto-mapping (DEFAULT_TSC_BY_CATEGORY below) is the single source of truth
+// shared with the Excel importer in src/lib/excel/import.ts.
 
 import type { Category, PBCPriority, TSC } from '@/types';
 
@@ -25,6 +32,38 @@ export const PBC_CATEGORIES: readonly PBCCategory[] = [
   'SOC 2 Readiness',
   'Physical & Environmental',
 ] as const;
+
+// Default SOC 2 Trust Service Criteria per category. Single source of truth:
+// the Excel importer (src/lib/excel/import.ts) imports this to auto-map TSC on
+// rows that arrive without an explicit mapping, and the library below uses it
+// to derive tscMapping for every PBC item.
+export const DEFAULT_TSC_BY_CATEGORY: Record<PBCCategory, TSC[]> = {
+  'Governance': ['Security'],
+  'Entities & Systems': ['Security'],
+  'Access Management': ['Security', 'Confidentiality'],
+  'Change Management': ['Security', 'Processing Integrity'],
+  'IT Operations': ['Availability', 'Security'],
+  'Third Parties': ['Security', 'Confidentiality'],
+  'Licensing': ['Security'],
+  'IT Spend': [],
+  'SOC 2 Readiness': ['Security', 'Availability', 'Confidentiality'],
+  'Physical & Environmental': ['Security', 'Availability'],
+};
+
+// One-line description of what each category covers — surfaced as tooltips in
+// the UI. Transcribed from the workbook's Categories reference sheet.
+export const CATEGORY_COVERAGE: Record<PBCCategory, string> = {
+  'Governance': 'Org structure, policies, risk, audit history, strategy, training',
+  'Entities & Systems': 'Multi-entity scoping, applications, network, cloud/SaaS, assets, domains/certs',
+  'Access Management': 'Identity dump, privileged users, HR reconciliation, JML, access reviews, service accounts, authentication',
+  'Change Management': 'Change population, procedure, emergency changes, dev/prod segregation, code repos',
+  'IT Operations': 'Backups, incidents, monitoring, patching, vulnerabilities, AV/EDR, BCP/DR',
+  'Third Parties': 'Vendor inventory, assurance reports, onboarding/DD, contracts/DPAs',
+  'Licensing': 'License inventory & optimization, true-ups, SaaS seats, prior audits, procurement',
+  'IT Spend': 'Budget vs actual, GL detail, top vendors, PO/invoice approval, intercompany, capex/opex, shadow IT',
+  'SOC 2 Readiness': 'TSC scope, control matrix, system description, risk assessment, customer commitments',
+  'Physical & Environmental': 'Data center access, environmental controls (if on-prem)',
+};
 
 export interface LibraryPBCItem {
   category: PBCCategory;
@@ -45,6 +84,10 @@ export interface LibraryAccessRequest {
 
 export interface LibraryWalkthrough {
   processArea: string;
+  /** One-paragraph narrative describing what the walkthrough covers. */
+  description: string;
+  /** What the auditor is trying to confirm in this session. */
+  objective: string;
   keyTopics: string;
   attendees: string;
   durationMin: number;
@@ -69,107 +112,168 @@ export interface LibrarySamplingItem {
 }
 
 // ---- PBC items, grouped by category, in display order ----
-const PBC: LibraryPBCItem[] = [
-  // Governance
-  { category: 'Governance', itemRequested: 'Org chart with reporting lines for IT, Information Security, Internal Audit', whyPurpose: 'Establish IT governance structure and segregation of duties', formatExpected: 'PDF / PowerPoint / Visio', priority: 'High', tscMapping: ['Security'] },
-  { category: 'Governance', itemRequested: 'IT strategy / multi-year roadmap for the audit period', whyPurpose: 'Understand IT priorities and major initiatives in scope', formatExpected: 'PDF / PowerPoint', priority: 'Medium', tscMapping: ['Security'] },
-  { category: 'Governance', itemRequested: 'IT policies index (acceptable use, access control, change mgmt, incident response, data classification, BCP/DR)', whyPurpose: 'Confirm policy coverage and review cadence', formatExpected: 'List or folder of PDFs', priority: 'High', tscMapping: ['Security'] },
-  { category: 'Governance', itemRequested: 'IT steering committee minutes for the audit period', whyPurpose: 'Evidence of governance oversight and key decisions', formatExpected: 'PDF / Word docs', priority: 'Medium', tscMapping: ['Security'] },
-  { category: 'Governance', itemRequested: 'Risk register (IT risks, treatment plans, owners)', whyPurpose: 'Confirm risk management process and IT risk visibility', formatExpected: 'Excel / GRC export', priority: 'High', tscMapping: ['Security'] },
-  { category: 'Governance', itemRequested: 'Most recent internal audit findings + management responses', whyPurpose: 'Track remediation of prior findings', formatExpected: 'PDF / Excel', priority: 'Medium', tscMapping: ['Security'] },
+// Transcribed verbatim from the workbook's PBC List sheet. tscMapping is
+// derived per-category from DEFAULT_TSC_BY_CATEGORY below.
+const PBC_RAW: Omit<LibraryPBCItem, 'tscMapping'>[] = [
+  // Governance (7)
+  { category: 'Governance', itemRequested: 'IT organizational chart — all entities, with roles, reporting lines, and external vendors / MSPs / contractors involved in IT operations', whyPurpose: 'Understand IT structure, identify control owners, SoD at org level, surface external parties embedded in IT processes', formatExpected: 'PDF / Visio', priority: 'High' },
+  { category: 'Governance', itemRequested: 'All IT and InfoSec policies — Acceptable Use, InfoSec, Access Control, Change Mgmt, Backup, Incident Response, Vendor Mgmt, Data Classification, BCP/DR, Password, Remote Access, Encryption, Data Retention, GenAI Use, MDM, Clean Desk', whyPurpose: 'Baseline for control design assessment; SOC 2 TSC mapping; check policies are current and approved', formatExpected: 'PDF / Word, with version, approval date, and owner', priority: 'High' },
+  { category: 'Governance', itemRequested: 'IT risk assessment + risk register (current & prior year) + methodology + risk acceptance log + steering minutes referencing risk + heat map + supporting inputs (pen tests, threat intel, vuln scans, prior audits)', whyPurpose: 'Confirm structured, current view of IT risks; align audit scope; surface gaps where significant risks have no controls', formatExpected: 'Excel + PDF', priority: 'High' },
+  { category: 'Governance', itemRequested: 'Prior internal/external audit reports (IT) and management responses — last 12 months (incl. internal audit, ITGC memos, prior SOC 2/ISO, regulatory inspections, pen tests, vendor licensing audits)', whyPurpose: 'Identify previously known findings, check remediation status, flag repeat issues', formatExpected: 'PDF reports + remediation tracker', priority: 'Medium' },
+  { category: 'Governance', itemRequested: 'IT steering committee minutes — last 12 months, with attendees and charter', whyPurpose: 'Evidence of governance and oversight; tone at the top; budget/risk/incident escalation', formatExpected: 'PDF', priority: 'Medium' },
+  { category: 'Governance', itemRequested: 'IT strategy document and roadmap (1-3 year strategy + annual roadmap)', whyPurpose: 'Alignment of IT direction with business strategy; planned investments and major initiatives driving change risk', formatExpected: 'PDF / PowerPoint', priority: 'Medium' },
+  { category: 'Governance', itemRequested: 'Security awareness and training program — curriculum, completion records, phishing simulations (campaigns, click rates, repeat offenders), new-hire onboarding, role-specific training (devs, admins, finance), policy acknowledgments', whyPurpose: 'SOC 2 CC1.4 / CC2.2; demonstrates personnel competence and awareness; phishing/social engineering control', formatExpected: 'Training platform export + materials', priority: 'High' },
 
-  // Entities & Systems
-  { category: 'Entities & Systems', itemRequested: 'List of in-scope legal entities and locations', whyPurpose: 'Confirm engagement scope at the entity level', formatExpected: 'Excel / Word', priority: 'High', tscMapping: ['Security'] },
-  { category: 'Entities & Systems', itemRequested: 'Application inventory with owner, criticality, hosting model, data classification', whyPurpose: 'Identify key applications supporting in-scope processes', formatExpected: 'Excel / CMDB export', priority: 'High', tscMapping: ['Security'] },
-  { category: 'Entities & Systems', itemRequested: 'Network diagram (high level) covering in-scope environments', whyPurpose: 'Understand network architecture and security zones', formatExpected: 'PDF / Visio', priority: 'Medium', tscMapping: ['Security'] },
-  { category: 'Entities & Systems', itemRequested: 'Data flow diagrams for the most critical applications', whyPurpose: 'Confirm data handling and trust boundaries', formatExpected: 'PDF / Visio', priority: 'Medium', tscMapping: ['Security', 'Confidentiality'] },
-  { category: 'Entities & Systems', itemRequested: 'Server / cloud-resource inventory (production), grouped by environment and owner', whyPurpose: 'Establish infrastructure population for sampling', formatExpected: 'Excel / CMDB export', priority: 'High', tscMapping: ['Security'] },
+  // Entities & Systems (6)
+  { category: 'Entities & Systems', itemRequested: 'Multi-entity scoping pack — per-entity profile (legal name, country, regulatory regime, headcount, IT model, local IT, M&A); shared vs separate services matrix (identity, email, network, helpdesk, ERP, HRIS, backup, SOC); inter-entity arrangements (MSAs, allocations, data flows, cross-entity access); scoping decisions and exclusions; group structure', whyPurpose: 'Define audit boundary; identify intercompany IT dependencies and shared services', formatExpected: 'Excel + PDF org chart', priority: 'High' },
+  { category: 'Entities & Systems', itemRequested: 'Application inventory per entity — name, version, owner (business + IT), criticality, hosting model, vendor, data classification, authentication, integrations, in scope for SOC 2 / financial reporting', whyPurpose: 'Scope in-scope systems; foundation for access, change, licensing testing', formatExpected: 'Excel', priority: 'High' },
+  { category: 'Entities & Systems', itemRequested: 'Network architecture pack — logical + physical diagrams; cloud architecture per workload; inter-entity connectivity; perimeter; remote access; identity; data flow diagrams; IP schema; network device inventory; firewall rule base + rule review evidence; segmentation rationale; DNS architecture; certificate/PKI documentation; wireless design; change log; monitoring tools; IDS/IPS coverage', whyPurpose: 'Architecture, trust boundaries, segmentation; required for SOC 2 system description', formatExpected: 'Visio / Lucid / PDF + Excel', priority: 'High' },
+  { category: 'Entities & Systems', itemRequested: 'Cloud and SaaS inventory — vendor, plan, account/tenant IDs, owner, entity, data, auth method, seats vs active users, annual cost, contract dates, SOC 2 / ISO attestations, procurement route (formal vs shadow IT)', whyPurpose: 'Scope cloud workloads; sub-service organizations for SOC 2; foundation for licensing/spend', formatExpected: 'Excel', priority: 'High' },
+  { category: 'Entities & Systems', itemRequested: 'Asset inventory — servers, workstations, mobile, network devices, printers/IoT/OT; with hostname, OS, owner, location, criticality, support status; decommissioned asset list + disposal evidence; reconciliation between sources (CMDB vs Intune vs HR vs procurement)', whyPurpose: 'Completeness check for patch / vuln / EDR coverage testing', formatExpected: 'Excel / CMDB export', priority: 'Medium' },
+  { category: 'Entities & Systems', itemRequested: 'Domain and SSL/TLS certificate inventory — registered domains (registrar, expiry, auto-renewal, DNSSEC, SPF/DKIM/DMARC); subdomain inventory; cert inventory (CN, SANs, issuer, expiry, key size, owner); renewal process; expiring certs (30/60/90 days); deprecated algorithms; code signing certs', whyPurpose: 'Surfaces forgotten internet-facing assets, expired certs, weak crypto, subdomain takeover risk', formatExpected: 'Excel + supporting exports', priority: 'Medium' },
 
-  // Access Management
-  { category: 'Access Management', itemRequested: 'User listings (active employees + contractors) from HR and from each in-scope application as of audit cutoff', whyPurpose: 'Compare HR-active to app-active for orphaned access testing', formatExpected: 'Excel/CSV with hire/term dates', priority: 'High', tscMapping: ['Security', 'Confidentiality'] },
-  { category: 'Access Management', itemRequested: 'Joiner / mover / leaver process documentation', whyPurpose: 'Confirm access lifecycle controls', formatExpected: 'PDF / Word / flowchart', priority: 'High', tscMapping: ['Security'] },
-  { category: 'Access Management', itemRequested: 'Recent termination listing (last 90 days) with last-access timestamps in each app', whyPurpose: 'Test timely access removal for leavers', formatExpected: 'Excel/CSV', priority: 'High', tscMapping: ['Security', 'Confidentiality'] },
-  { category: 'Access Management', itemRequested: 'Privileged / admin user listings per application', whyPurpose: 'Test that privileged access is restricted and reviewed', formatExpected: 'Excel/CSV', priority: 'High', tscMapping: ['Security', 'Confidentiality'] },
-  { category: 'Access Management', itemRequested: 'Most recent user access review evidence (approvals + actions taken)', whyPurpose: 'Confirm periodic access certification operates as designed', formatExpected: 'Excel + emails / GRC export', priority: 'High', tscMapping: ['Security', 'Confidentiality'] },
-  { category: 'Access Management', itemRequested: 'Password / MFA policy configuration screenshots from each app (length, complexity, MFA enforcement)', whyPurpose: 'Confirm authentication controls match policy', formatExpected: 'Screenshots / config export', priority: 'Medium', tscMapping: ['Security'] },
+  // Access Management (7)
+  { category: 'Access Management', itemRequested: 'Identity & access full data extract pack — user dump per tenant (UPN, status, last sign-in interactive+non-interactive, password change, MFA registration & methods, CA policies, risk state, licenses, dept, manager, entity, type, mailbox, forwarding rules); guests; service accounts & app registrations; groups (incl. privileged & dynamic); PIM eligible vs active; CA policy export; auth methods policy; on-prem AD (DCs, trusts, Tier 0, password policy, GPOs, Kerberos delegation, SPNs); reconciliation data (HR, contractors, terminated, role changes); sign-in & audit logs; risky sign-in reports; inactive user reports', whyPurpose: 'Foundation for all access testing — completeness, stale accounts, MFA coverage, license-to-user reconciliation', formatExpected: 'CSV per dataset; Graph API extraction preferred', priority: 'High' },
+  { category: 'Access Management', itemRequested: 'Privileged / admin user listings per system — Entra/AD directory roles, app admins, DB sysadmins, OS local admins, cloud Owner/Contributor/UAA, network device admins, security tool admins, hypervisor admins, backup admins, ticketing admins, source code admins, ERP/HRIS admins, M365 workload admins; per user: name, role, justification, approval, date granted, last review, JIT vs permanent, MFA, named vs shared', whyPurpose: 'Test least privilege, validate approvals, identify SoD conflicts', formatExpected: 'Excel — one tab per system', priority: 'High' },
+  { category: 'Access Management', itemRequested: 'HR active employee listing as of testing date + JML extracts — employee ID, name, status, hire/term dates, dept, title, manager, entity, employment type; separate extracts for terminations, new hires, role changes during period; contractor/third-party worker list; long-term leave list', whyPurpose: 'Reconciliation source of truth; ghost accounts; deprovisioning testing', formatExpected: 'CSV / Excel', priority: 'High' },
+  { category: 'Access Management', itemRequested: 'JML process documentation + sample tickets — joiner, mover, leaver, contractor, emergency termination procedures; RACI; access matrices/birthright; SLA targets; 5-10 sample tickets each (joiners, leavers including involuntary, movers, contractors); evidence per ticket showing request, approver, HR trigger, all systems touched, timestamps, completion', whyPurpose: 'Test design + operating effectiveness of provisioning/deprovisioning', formatExpected: 'PDF + ticket exports', priority: 'High' },
+  { category: 'Access Management', itemRequested: 'Periodic access review evidence per system — frequency, last review (user list reviewed, reviewer, date, sign-off, decisions, exceptions, remediation tickets, closure evidence, time to remediation); reviews of privileged accounts, standard users, service accounts, guests, group memberships, application access, cross-entity access, OAuth grants', whyPurpose: 'SOC 2 CC6.2 / CC6.3 — common failure point; rubber-stamp risk', formatExpected: 'Excel + email approvals + tickets', priority: 'High' },
+  { category: 'Access Management', itemRequested: 'Service / generic / shared account inventory — per account: name, system, purpose, owner, backup owner, permissions, password rotation, vault status, who has credentials, MFA enforcement, interactive login allowed, last activity, monitoring, last review; categories: service, system/built-in, generic, shared, app-to-app, break-glass, vendor accounts; naming convention, approval process, PAM coverage report', whyPurpose: 'Often the weakest link: high privilege, no clear owner, never reviewed; major SOC 2 finding area', formatExpected: 'Excel', priority: 'Medium-High' },
+  { category: 'Access Management', itemRequested: 'Authentication & password configuration pack — on-prem AD (default domain policy, lockout, FGPP, Kerberos, NTLM, LDAP, SMB signing, gMSA, LAPS, SPNs); Entra ID (auth methods policy, password protection, smart lockout, SSPR, security defaults, legacy auth, B2B settings); Conditional Access full export with gap analysis; MFA detail (methods, phishing-resistant coverage, app passwords, trusted IPs); per-app authentication (SSO, MFA, local accounts); privileged auth (PIM MFA, PAW, JIT); cloud platform auth (root protection, IAM password policy, key rotation); other surfaces (VPN, ZTNA, jump host, DB auth, SSH keys, API auth, Wi-Fi 802.1X); Identity Protection; app secret/cert inventory + expiries; federation/trust', whyPurpose: 'Validates policy on paper matches enforcement in systems — common finding gap', formatExpected: 'Screenshots + config exports + GPO HTML + CA JSON + Graph extracts', priority: 'Medium-High' },
 
-  // Change Management
-  { category: 'Change Management', itemRequested: 'Change management policy + workflow diagram', whyPurpose: 'Establish design of change controls', formatExpected: 'PDF / Word / Visio', priority: 'High', tscMapping: ['Security', 'Processing Integrity'] },
-  { category: 'Change Management', itemRequested: 'Full change ticket population for the audit period (prod-impacting changes)', whyPurpose: 'Sampling population for change testing', formatExpected: 'CSV export from ticketing system', priority: 'High', tscMapping: ['Processing Integrity'] },
-  { category: 'Change Management', itemRequested: 'Emergency change listing with post-implementation review evidence', whyPurpose: 'Test the e-change process and after-the-fact controls', formatExpected: 'CSV + tickets', priority: 'Medium', tscMapping: ['Processing Integrity'] },
-  { category: 'Change Management', itemRequested: 'CI/CD pipeline configuration / branch protection for in-scope repos', whyPurpose: 'Confirm separation of duties in code deployment', formatExpected: 'Screenshots / config export', priority: 'Medium', tscMapping: ['Security', 'Processing Integrity'] },
-  { category: 'Change Management', itemRequested: 'List of developers with production deploy access', whyPurpose: 'Test SoD between develop and deploy', formatExpected: 'Excel/CSV', priority: 'High', tscMapping: ['Security'] },
+  // Change Management (5)
+  { category: 'Change Management', itemRequested: 'Full population of changes during audit period — ticket export with: change ID, type (standard/normal/emergency/pre-approved), category, system/CI, requestor, approvers, risk rating, planned/actual dates, status, backout plan, testing evidence, PIR, linked incidents, entity; completeness reconciliation against deployment logs / release notes / CI/CD history; CAB minutes; release calendar', whyPurpose: 'Population for change testing — without complete population, no change testing is reliable', formatExpected: 'CSV / Excel + supporting docs', priority: 'High' },
+  { category: 'Change Management', itemRequested: 'Change management procedure / workflow — policy, change types definitions, RACI, workflow diagram, approval matrix, CAB structure, risk/impact criteria, testing requirements, backout requirements, PIR requirements, emergency procedure, standard/pre-approved catalog, freeze periods, bypass capture process, integration with incident & project mgmt, multi-entity scope, tooling', whyPurpose: 'Establishes control design before testing operating effectiveness', formatExpected: 'PDF / Word', priority: 'High' },
+  { category: 'Change Management', itemRequested: 'Emergency change evidence — full list of emergency changes during period; per change: emergency justification, pre-implementation approval, implementation evidence, post-implementation approval, linked incident; emergency rate trend; breakdown by system/implementer/reason; after-hours procedure; any without post-approval (open exceptions)', whyPurpose: 'Highest-risk change type; common abuse area for routine work', formatExpected: 'Ticket exports + evidence', priority: 'Medium-High' },
+  { category: 'Change Management', itemRequested: 'Dev / Test / Prod segregation — environment list per app, network segregation, data segregation (no prod data in lower envs / masking); access lists for prod and dev (and any cross-env access with justification); CI/CD pipeline architecture; branch protection rules; build artifact integrity; deployment approval gates; manual deployment evidence; source code mgmt (repos, branching, PR/review reqs); IaC repos; DB schema change process; direct prod DB access', whyPurpose: 'Core SoD control — devs should not deploy to production unreviewed', formatExpected: 'Screenshots + access lists + config exports', priority: 'Medium-High' },
+  { category: 'Change Management', itemRequested: 'Code repository access & controls — per platform: org admins, 2FA enforcement, SSO, audit logs, public repo policy; repo inventory; per critical repo: members + permissions, branch protection rules, CODEOWNERS, status checks, webhooks, deploy keys, secrets; pipelines/Actions inventory + approval gates + self-hosted runners + third-party plugins + secrets in pipelines; security tooling (secret scanning, push protection, Dependabot, SAST, SCA, container/license scanning); access reviews; bot/app installations', whyPurpose: 'Source code integrity; supply chain risk; common gap area', formatExpected: 'Exports + screenshots', priority: 'Medium' },
 
-  // IT Operations
-  { category: 'IT Operations', itemRequested: 'Backup policy + most recent restore test results (per critical system)', whyPurpose: 'Confirm backup process operating and tested', formatExpected: 'PDF + tickets / runbook output', priority: 'High', tscMapping: ['Availability'] },
-  { category: 'IT Operations', itemRequested: 'Patch management standard + patch compliance report as of cutoff', whyPurpose: 'Test patch SLA adherence', formatExpected: 'PDF + scanner export', priority: 'Medium', tscMapping: ['Security', 'Availability'] },
-  { category: 'IT Operations', itemRequested: 'Vulnerability scan reports for the audit period (external + internal)', whyPurpose: 'Confirm vulnerability management cadence + remediation', formatExpected: 'PDF / scanner export', priority: 'Medium', tscMapping: ['Security'] },
-  { category: 'IT Operations', itemRequested: 'Incident response playbook + incident log for the audit period', whyPurpose: 'Test IR readiness and historical handling', formatExpected: 'PDF + ticket export', priority: 'Medium', tscMapping: ['Security', 'Availability'] },
-  { category: 'IT Operations', itemRequested: 'Monitoring + alerting configuration (key dashboards, on-call rota)', whyPurpose: 'Confirm operational monitoring coverage', formatExpected: 'Screenshots / on-call schedule', priority: 'Medium', tscMapping: ['Availability'] },
-  { category: 'IT Operations', itemRequested: 'BCP/DR plan + most recent DR test report', whyPurpose: 'Confirm continuity plans are tested annually', formatExpected: 'PDF + test report', priority: 'Medium', tscMapping: ['Availability'] },
+  // IT Operations (7)
+  { category: 'IT Operations', itemRequested: 'Backup schedule, retention policy, and restore test evidence — backup design (policy, RPO/RTO, scope, tooling, architecture, 3-2-1, immutable copy, encryption); operations (schedules, retention tiers, recent job logs, failure tracking, SLA metrics, capacity); restore testing (policy, schedule, last test per critical system with date/scope/RTO achieved/issues/sign-off, full DR restore, actual production restores); SaaS/cloud (M365 backup, cloud DB backups, versioning); access (backup admin list, SoD with system admins); resilience (media disposal, key mgmt, immutable recovery test)', whyPurpose: 'Validates data recoverability — untested backup is not a backup; SOC 2 Availability', formatExpected: 'Screenshots + logs + test reports + policy', priority: 'High' },
+  { category: 'IT Operations', itemRequested: 'Incident log + IR documentation — full incident export (ID, detection, severity, category, system, customer impact, timeline, SLA, root cause, CAPA, linked changes/problems, notifications, PIR); IR policy / plan; severity matrix; runbooks (ransomware, phishing, breach, account compromise); IR roster + on-call + contact tree; tabletop evidence; PIR samples; trend reporting; communication templates; forensics procedures; external IR retainer', whyPurpose: 'Tests incident management process; control failure indicator', formatExpected: 'Excel / ITSM export + PDFs', priority: 'High' },
+  { category: 'IT Operations', itemRequested: 'Monitoring & alerting configuration — SIEM (platform, log source inventory & gap analysis, retention, time sync); detection rules with MITRE mapping + coverage of common scenarios; alerting & response (routing, 24/7 vs business hours, MSSP details, on-call, SLA, sample alerts); infra/availability monitoring; CSPM tooling; specific high-value detections (privileged role changes, CA changes, break-glass usage, audit log clear, mass permission changes, SP credential additions, inbox forwarding); detection engineering process', whyPurpose: 'Detective controls; without monitoring, incidents go undetected; SOC 2 CC7.2/CC7.3', formatExpected: 'Screenshots + config + sample alerts', priority: 'Medium-High' },
+  { category: 'IT Operations', itemRequested: 'Patch management — policy with SLAs per severity + asset class; tooling per platform; last 3-6 cycles per asset class with deployment + compliance reports; SLA performance metrics + aged patches; specific reports for critical CVEs released during period; reconciliation patch tool vs asset inventory; offline workstations; EOL/unsupported systems + roadmap; exception register (with expiry + compensating control); cloud-specific (image baselines, container rebuild, auto-patch config)', whyPurpose: 'Top breach vector — unpatched systems; common SLA gap area', formatExpected: 'PDF + reports + screenshots', priority: 'High' },
+  { category: 'IT Operations', itemRequested: 'Vulnerability management — VM policy/SLAs/methodology; tooling (network, web app DAST, CSPM, container, agent-based, ASM); scan frequency, authenticated coverage, gap analysis vs assets; recent scan reports per scanner (last 2-4 cycles) + dashboards + aged findings + top recurring vulns; remediation tracking (findings → tickets → closure → verification); SLA achievement metrics; backlog trend; pen test reports + retest evidence; bug bounty; KEV/zero-day handling; threat intel inputs; exception register; metrics reported to leadership', whyPurpose: 'Continuous VM expected; close-the-loop discipline test', formatExpected: 'Scan exports + tracker exports + dashboards', priority: 'High' },
+  { category: 'IT Operations', itemRequested: 'AV / EDR coverage and operations — tooling per platform; coverage (deployed vs total assets, % per class, excluded assets register, stale agents, outdated versions); configuration (policy export, tamper protection, exclusions list, ASR rules, controlled folder access, EDR block mode); operations (sample detection events with triage, alert tuning, agent health monitoring, SIEM integration, threat hunting); agent patching', whyPurpose: 'Endpoint protection coverage gaps = blind spots; SOC 2 CC6.8', formatExpected: 'Console exports + reports', priority: 'Medium' },
+  { category: 'IT Operations', itemRequested: 'BCP / DR plans + test evidence — BCP, DRP, crisis mgmt plan, pandemic plan; last review/approval; BIA (date, processes, RTO/RPO/MAO per process, dependencies, financial impact); DR architecture (site, replication, failover mechanism, capacity at DR, third-party resilience); test schedule + types performed; most recent DR test per critical system (scope, RTO/RPO achieved vs target, issues, lessons, sign-off); BCP exercises; tabletop with leadership; roles & contacts (out-of-band); workforce continuity; cyber recovery scenarios; any actual invocations during period', whyPurpose: 'SOC 2 Availability; resilience to disruption', formatExpected: 'Plan documents + test reports', priority: 'Medium-High' },
 
-  // Third Parties
-  { category: 'Third Parties', itemRequested: 'Vendor inventory with criticality classification and data shared', whyPurpose: 'Identify in-scope vendor population', formatExpected: 'Excel / GRC export', priority: 'High', tscMapping: ['Security', 'Confidentiality'] },
-  { category: 'Third Parties', itemRequested: 'Most recent SOC 2 / ISO reports for critical vendors', whyPurpose: 'Evidence of third-party control reliance', formatExpected: 'PDFs', priority: 'High', tscMapping: ['Security'] },
-  { category: 'Third Parties', itemRequested: 'Vendor onboarding due-diligence packet samples', whyPurpose: 'Test vendor onboarding control', formatExpected: 'Folder of vendor packets', priority: 'Medium', tscMapping: ['Security'] },
-  { category: 'Third Parties', itemRequested: 'Master service agreement template / DPA template', whyPurpose: 'Confirm contractual security and data protection terms', formatExpected: 'PDF / Word', priority: 'Low', tscMapping: ['Confidentiality'] },
+  // Third Parties (4)
+  { category: 'Third Parties', itemRequested: 'Vendor / third-party listing with criticality — per vendor: name, service, type, owners, entity served, criticality + rationale, data accessed + classification, system access, sub-processors, contract dates, annual spend, DPA, last DD, last assurance report, status; sub-service orgs flagged for SOC 2; categories covered (cloud, SaaS, MSPs, software vendors with prod access, consultants, payment, HR/payroll, comms, marketing/analytics, AI/ML services, physical security); reconciliation against AP / vendor master / SaaS discovery / expense reports', whyPurpose: 'Scope vendor risk testing; sub-service orgs for SOC 2; surface shadow IT', formatExpected: 'Excel', priority: 'High' },
+  { category: 'Third Parties', itemRequested: 'Third-party assurance reports — SOC 1/SOC 2/ISO 27001 for critical vendors and named sub-service orgs; bridge letters for gap to audit period end; internal review log (reviewer, date, findings, CUECs implemented); list of critical vendors without reports + alternative DD', whyPurpose: 'Reliance on key vendors for SOC 2 and ITGC', formatExpected: 'PDFs + Excel review tracker', priority: 'High' },
+  { category: 'Third Parties', itemRequested: 'Vendor onboarding & due diligence — onboarding/DD procedure; sample of 5-10 vendors onboarded during period (questionnaire, security review, contract review, approval); periodic re-assessment process for existing critical vendors; offboarding evidence (access removal, data return/destruction certificate)', whyPurpose: 'Front-end vendor risk control test', formatExpected: 'Policy + samples', priority: 'Medium' },
+  { category: 'Third Parties', itemRequested: 'Vendor contracts & DPAs — top 20 IT vendor contracts + DPAs for personal data processors + MSAs/SOWs; key clauses (confidentiality, data protection, security reqs, breach notification timeline, audit rights, sub-processor approval, termination/data return, liability/indemnity, SLAs); contract repository + access list', whyPurpose: 'Validates contractual protections actually exist', formatExpected: 'PDFs + summary matrix', priority: 'Medium' },
 
-  // Licensing
-  { category: 'Licensing', itemRequested: 'Master software license inventory (per application + entitlement counts)', whyPurpose: 'Establish licensing baseline', formatExpected: 'Excel / SAM tool export', priority: 'High', tscMapping: ['Security'] },
-  { category: 'Licensing', itemRequested: 'Latest reconciliation: licenses held vs deployed/active', whyPurpose: 'Test compliance with license terms', formatExpected: 'Excel', priority: 'High', tscMapping: ['Security'] },
-  { category: 'Licensing', itemRequested: 'OEM / Microsoft / Adobe / Oracle audit history (if applicable)', whyPurpose: 'Confirm history of vendor audits and outcomes', formatExpected: 'PDF / email thread', priority: 'Low', tscMapping: [] },
-  { category: 'Licensing', itemRequested: 'Open-source software inventory + license obligations (SBOM)', whyPurpose: 'Confirm OSS license compliance', formatExpected: 'CSV / SBOM JSON', priority: 'Medium', tscMapping: [] },
+  // Licensing (5)
+  { category: 'Licensing', itemRequested: 'Software licensing — full compliance & optimization pack: master inventory (vendor, product, edition, metric, entitled, deployed, variance, utilization rate, annual cost, cost per active user, contract refs, dates, auto-renewal, entity, allocation, reseller, SAM source); Microsoft (M365 SKU assignment + utilization, E5 vs E3 features used, overlapping licenses, disabled users still licensed, guest paid licenses, group-based, add-ons, Windows Server + CAL position, SQL per-core, VS subscriptions, Azure MACC, Azure Hybrid Benefit, Software Assurance benefits, MLS, Product Use Rights review); Oracle (LMS scripts + outputs, license type, NUP/Processor, options & mgmt packs deployed vs licensed, VM partitioning, ULA, Java SE post-2023); SAP (named user counts, indirect access, engine licensing, USMM/LAW); VMware (post-Broadcom bundles, per-core, perpetual to subscription); SaaS portfolio (seats vs active users 30/60/90, departed employees still seated, free vs paid, consumption usage, overage exposure, minimum commitments, auto-renewal next 90/180, overlapping tools, shadow IT); cloud licensing (RIs/Savings Plans + coverage, unused RIs, Hybrid Benefit, BYOL, Marketplace); open source (license obligations, GPL/AGPL, free-tier commercial restrictions, personal accounts); cost/value views (top 20 spend, cost per active user, waste estimate, renewal calendar, overlapping rationalization, discount achieved); compliance/true-up; SAM tooling + coverage; reclamation process; standard catalog; reconciliation tests (entitlement → deployed → financial)', whyPurpose: 'Compliance + cost optimization findings; central to scope', formatExpected: 'Excel master + per-publisher tabs + raw exports', priority: 'High' },
+  { category: 'Licensing', itemRequested: 'Compliance position & true-ups — latest True-Up / True-Down filings (last 2 cycles with quantities + amounts); any vendor-led audit in last 3 years (scope, findings, settlement, remediation); self-audit / mock audit evidence; internal license position review (frequency, owner, last review); reporting to leadership; open compliance gaps + remediation plan + cash reserved for settlement risk', whyPurpose: 'Formal entitlement vs deployment reconciliation; quantifies risk', formatExpected: 'PDFs + Excel', priority: 'Medium-High' },
+  { category: 'Licensing', itemRequested: 'SaaS subscriptions — seats vs active users — per app: seats purchased, assigned, active 30/60/90, annual cost, cost per active user, renewal date, auto-renewal, contract owner; departed employees still on seats; inactive seats >60 days (reclaim); apps procured via expense / corporate card (shadow IT); overlapping tools; consumption tier exposure (API calls, storage, transactions); SaaS discovery / mgmt tool used; top 20 SaaS by spend with utilization detail', whyPurpose: 'Highest-impact area for cost savings findings', formatExpected: 'Excel', priority: 'High' },
+  { category: 'Licensing', itemRequested: 'Last vendor-led audit / SAM report — most recent vendor software audits (last 3 years), settlement amounts, remediation; internal SAM maturity assessment; SAM tool coverage report (% of estate, gaps); annual SAM report to leadership', whyPurpose: 'Prior audit findings indicate recurring risk; SAM maturity context', formatExpected: 'PDF + Excel', priority: 'Medium' },
+  { category: 'Licensing', itemRequested: 'License procurement & assignment process — request/approval/assignment workflow; approval matrix; assignment process (manual/group/automated); reclamation triggers; sample of 5-10 license requests during period with approval evidence; standard software catalog; non-catalog request process', whyPurpose: 'Control over license issuance', formatExpected: 'PDF + samples', priority: 'Medium' },
 
-  // IT Spend
-  { category: 'IT Spend', itemRequested: 'IT budget vs actuals for the audit period (by cost center)', whyPurpose: 'Spend benchmarking and outlier identification', formatExpected: 'Excel', priority: 'Medium', tscMapping: [] },
-  { category: 'IT Spend', itemRequested: 'Top 20 IT vendor spend with contract end dates', whyPurpose: 'Renewal planning and spend concentration', formatExpected: 'Excel', priority: 'Medium', tscMapping: [] },
-  { category: 'IT Spend', itemRequested: 'Cloud spend report (per provider, last 12 months trended monthly)', whyPurpose: 'Identify cost optimization opportunities', formatExpected: 'CSV / provider export', priority: 'Low', tscMapping: [] },
-  { category: 'IT Spend', itemRequested: 'Headcount + contractor cost breakdown by IT function', whyPurpose: 'Org cost analysis', formatExpected: 'Excel', priority: 'Low', tscMapping: [] },
+  // IT Spend (7)
+  { category: 'IT Spend', itemRequested: 'IT budget vs actuals — current and prior year by entity and cost center; variance analysis with explanations for material variances; forecast vs actual trend', whyPurpose: 'Identify spend variances; scope spend testing', formatExpected: 'Excel', priority: 'High' },
+  { category: 'IT Spend', itemRequested: 'IT general ledger detail — full GL extract for all IT cost centers / accounts for audit period; account mapping (which GL accounts roll to IT); entity dimension preserved', whyPurpose: 'Population for spend analytics and sampling', formatExpected: 'Excel / GL export', priority: 'High' },
+  { category: 'IT Spend', itemRequested: 'Top 20 IT vendors by spend — vendor name, annual spend, contract status, renewal date, business owner; linked contracts and POs; concentration analysis (% of total IT spend per vendor)', whyPurpose: 'Concentration risk; contract compliance', formatExpected: 'Excel + PDF contracts', priority: 'High' },
+  { category: 'IT Spend', itemRequested: 'PO and invoice approval workflow — approval matrix / DoA for IT spend; workflow doc (request → approve → PO → receipt → invoice → pay); system used (ERP module, Coupa, Ariba); 10-15 sample IT invoices with approval evidence + PO + 3-way match; exception process for unbudgeted / over-budget', whyPurpose: 'Test purchasing controls', formatExpected: 'PDF + sample evidence', priority: 'High' },
+  { category: 'IT Spend', itemRequested: 'Intercompany IT cost allocation — methodology (per user / revenue / headcount / fixed split / ABC); supporting calculations for current allocations; intercompany agreements / MSAs; consistency check across periods; transfer pricing (esp. cross-border); reconciliation total allocated = total cost', whyPurpose: 'Multi-entity allocation accuracy', formatExpected: 'Excel + memo', priority: 'High' },
+  { category: 'IT Spend', itemRequested: 'Capex vs Opex IT classification — capitalization policy (thresholds, useful life by asset class); recent capitalization decisions for IT (last 12 months); cloud / SaaS treatment under applicable accounting standard (IAS 38 / ASC 350-40, esp. configuration & customization costs)', whyPurpose: 'Accounting treatment review', formatExpected: 'PDF policy + sample decisions', priority: 'Medium' },
+  { category: 'IT Spend', itemRequested: 'Shadow IT / unsanctioned spend — sample of expense reports / corporate card transactions for IT-related spend; SaaS discovery tool output (if any); process for detecting and onboarding/offboarding shadow IT', whyPurpose: 'Identify uncontrolled IT spend outside procurement', formatExpected: 'Excel', priority: 'Low-Medium' },
 
-  // SOC 2 Readiness
-  { category: 'SOC 2 Readiness', itemRequested: 'Existing SOC 2 readiness assessment or gap analysis (if any)', whyPurpose: 'Identify known gaps to plan testing efficiently', formatExpected: 'PDF / Word', priority: 'Medium', tscMapping: ['Security', 'Availability', 'Confidentiality'] },
-  { category: 'SOC 2 Readiness', itemRequested: 'Information security policy + most recent management review evidence', whyPurpose: 'Foundational SOC 2 Security CC control', formatExpected: 'PDF + sign-off', priority: 'High', tscMapping: ['Security'] },
-  { category: 'SOC 2 Readiness', itemRequested: 'Most recent security awareness training completion report', whyPurpose: 'Test workforce training control', formatExpected: 'Excel / LMS export', priority: 'Medium', tscMapping: ['Security'] },
-  { category: 'SOC 2 Readiness', itemRequested: 'Data retention + disposal policy and evidence of execution', whyPurpose: 'Test data lifecycle controls', formatExpected: 'PDF + tickets', priority: 'Medium', tscMapping: ['Confidentiality'] },
-  { category: 'SOC 2 Readiness', itemRequested: 'Encryption-in-transit and at-rest configuration evidence for the most sensitive systems', whyPurpose: 'Confirm cryptographic controls', formatExpected: 'Screenshots / config export', priority: 'High', tscMapping: ['Security', 'Confidentiality'] },
+  // SOC 2 Readiness (5)
+  { category: 'SOC 2 Readiness', itemRequested: 'Trust Services Criteria scope — confirmation of TSCs in scope (Security mandatory; +Availability / Confidentiality / Processing Integrity / Privacy); Type I or Type II target; audit period; service auditor (if engaged)', whyPurpose: 'Confirm SOC 2 scope', formatExpected: 'Memo / email', priority: 'High' },
+  { category: 'SOC 2 Readiness', itemRequested: 'Existing control matrix mapped to TSC — control owner per control; test status / readiness assessment; gap remediation tracker', whyPurpose: 'Starting point for gap assessment', formatExpected: 'Excel', priority: 'High' },
+  { category: 'SOC 2 Readiness', itemRequested: 'System description draft — system boundaries (in-scope products/services); infrastructure; software; people; procedures (manual + automated); data (types, flows); sub-service organizations (carve-out vs inclusive); customer responsibilities (CUECs)', whyPurpose: 'Required SOC 2 deliverable foundation', formatExpected: 'Word / PDF', priority: 'High' },
+  { category: 'SOC 2 Readiness', itemRequested: 'TSC-specific risk assessment — risk identification mapped to TSCs; likelihood / impact scoring; control mapping per risk', whyPurpose: 'Required by SOC 2 framework', formatExpected: 'Excel / PDF', priority: 'Medium' },
+  { category: 'SOC 2 Readiness', itemRequested: 'Customer commitments and system requirements — SLAs in customer contracts (uptime, response time, data handling); contractual security commitments; privacy / data protection commitments; mapping commitments → controls', whyPurpose: 'TSC alignment with customer commitments', formatExpected: 'PDF + matrix', priority: 'Medium' },
 
-  // Physical & Environmental
-  { category: 'Physical & Environmental', itemRequested: 'List of in-scope physical sites (offices + data centers + colos)', whyPurpose: 'Determine physical scope', formatExpected: 'Excel', priority: 'Medium', tscMapping: ['Security'] },
-  { category: 'Physical & Environmental', itemRequested: 'Badge access listings for data center / server room areas', whyPurpose: 'Test physical access restriction', formatExpected: 'Excel / access system export', priority: 'Medium', tscMapping: ['Security'] },
-  { category: 'Physical & Environmental', itemRequested: 'Visitor log / sign-in records for sensitive facilities, last 90 days', whyPurpose: 'Test visitor access control', formatExpected: 'CSV / scanned log', priority: 'Low', tscMapping: ['Security'] },
-  { category: 'Physical & Environmental', itemRequested: 'Environmental controls evidence: UPS, fire suppression, temperature/humidity logs', whyPurpose: 'Confirm environmental controls for availability', formatExpected: 'Screenshots / monitoring export', priority: 'Low', tscMapping: ['Availability'] },
+  // Physical & Environmental (2)
+  { category: 'Physical & Environmental', itemRequested: 'Data center / server room access — access list per facility (employees + vendors); access review evidence; provisioning/deprovisioning process; visitor logs sample; surveillance / camera coverage description', whyPurpose: 'Physical access controls (only if on-prem facilities exist)', formatExpected: 'Excel + PDF', priority: 'Medium' },
+  { category: 'Physical & Environmental', itemRequested: 'Environmental controls — UPS, generator, fire suppression, HVAC, water detection; maintenance / inspection records (last 12 months); environmental monitoring / alerting', whyPurpose: 'SOC 2 Availability (only if on-prem)', formatExpected: 'PDF + photos', priority: 'Low' },
 ];
 
+const PBC: LibraryPBCItem[] = PBC_RAW.map((i) => ({
+  ...i,
+  tscMapping: DEFAULT_TSC_BY_CATEGORY[i.category],
+}));
+
 // ---- Access requests ----
+// Transcribed verbatim from the workbook's Access Requests sheet.
 const ACCESS: LibraryAccessRequest[] = [
-  { system: 'Active Directory / Entra ID', accessType: 'Read-only auditor', rolePermissions: 'Read users, groups, group memberships, last logon', recommendedMethod: 'Custom RBAC role', justification: 'User listing extraction for access testing' },
-  { system: 'Okta / SSO', accessType: 'Read-only', rolePermissions: 'Read users, groups, app assignments, sign-in logs', recommendedMethod: 'Built-in Read-only Admin', justification: 'Authentication and SSO control testing' },
-  { system: 'HRIS (Workday / SAP / BambooHR)', accessType: 'Auditor read-only', rolePermissions: 'Active employees + contractor list, hire/term dates, manager hierarchy', recommendedMethod: 'Audit role', justification: 'Joiner/mover/leaver testing' },
-  { system: 'ERP (in-scope financial system)', accessType: 'Read-only', rolePermissions: 'Users, roles, role assignments, change history', recommendedMethod: 'Built-in Inquiry role', justification: 'Privileged access + change review' },
-  { system: 'CRM (e.g. Salesforce / Dynamics)', accessType: 'Read-only', rolePermissions: 'Users, profiles, permission sets, login history', recommendedMethod: 'View All', justification: 'Access testing' },
-  { system: 'Production cloud (AWS / Azure / GCP)', accessType: 'Read-only Reader', rolePermissions: 'List resources, read IAM, read CloudTrail / Activity Log', recommendedMethod: 'Built-in Reader / SecurityAudit', justification: 'Cloud infra and IAM testing' },
-  { system: 'Source control (GitHub / GitLab / Bitbucket)', accessType: 'Org auditor', rolePermissions: 'Read all repos, branch protection settings, audit log', recommendedMethod: 'Built-in Auditor role', justification: 'Change control testing' },
-  { system: 'CI/CD (GitHub Actions / Azure DevOps / Jenkins)', accessType: 'Read-only', rolePermissions: 'Read pipeline definitions, runs, approvers, secrets metadata', recommendedMethod: 'Built-in viewer', justification: 'Deployment control testing' },
-  { system: 'Ticketing (Jira / ServiceNow)', accessType: 'Read-only', rolePermissions: 'Read all projects/queues used for change + incident management', recommendedMethod: 'Custom view role', justification: 'Change + incident sampling' },
-  { system: 'EDR / Antivirus console', accessType: 'Read-only', rolePermissions: 'Coverage reports, detection history, exclusions', recommendedMethod: 'Built-in viewer', justification: 'Endpoint protection coverage testing' },
-  { system: 'Vulnerability scanner', accessType: 'Read-only', rolePermissions: 'Scan history, findings, remediation status', recommendedMethod: 'Built-in viewer', justification: 'Vulnerability management testing' },
-  { system: 'MDM (Intune / Jamf)', accessType: 'Read-only', rolePermissions: 'Device inventory, compliance status, configuration profiles', recommendedMethod: 'Read-only Operator', justification: 'Endpoint configuration testing' },
+  { system: 'Microsoft Entra ID / M365', accessType: 'Read-only console', rolePermissions: 'Global Reader', recommendedMethod: 'Account in tenant', justification: 'Walkthroughs, screenshots, ad-hoc checks across multi-entity tenant' },
+  { system: 'Microsoft Graph API', accessType: 'Read-only programmatic', rolePermissions: 'Directory.Read.All, AuditLog.Read.All, Reports.Read.All, Policy.Read.All, User.Read.All, Group.Read.All, RoleManagement.Read.All', recommendedMethod: 'App registration with client credentials', justification: 'Bulk user/license/MFA/sign-in extraction across entities — essential for licensing scope' },
+  { system: 'Active Directory (on-prem, if any)', accessType: 'Read-only', rolePermissions: 'Domain Users + read on OUs', recommendedMethod: 'Domain account', justification: 'AD queries / PowerShell read commands' },
+  { system: 'Microsoft 365 Admin Center', accessType: 'Read-only', rolePermissions: 'Global Reader', recommendedMethod: 'Same as Entra account', justification: 'License assignments, mailbox stats' },
+  { system: 'Microsoft Purview / Compliance', accessType: 'Read-only', rolePermissions: 'Compliance Data Reader / Reader', recommendedMethod: 'Account', justification: 'Audit log search, DLP config, retention policies' },
+  { system: 'Microsoft Defender / Security portal', accessType: 'Read-only', rolePermissions: 'Security Reader', recommendedMethod: 'Account', justification: 'Endpoint, identity, email security posture' },
+  { system: 'Azure (subscriptions in scope)', accessType: 'Read-only', rolePermissions: 'Reader at Mgmt Group / Subscription', recommendedMethod: 'Account or service principal', justification: 'Resource inventory, RBAC review, policy compliance' },
+  { system: 'AWS (if applicable)', accessType: 'Read-only', rolePermissions: 'ReadOnlyAccess + SecurityAudit (managed)', recommendedMethod: 'IAM user with MFA, or SSO', justification: 'Cloud configuration review' },
+  { system: 'GCP (if applicable)', accessType: 'Read-only', rolePermissions: 'Viewer + Security Reviewer', recommendedMethod: 'Account', justification: 'Cloud configuration review' },
+  { system: 'Ticketing system (ServiceNow / Jira)', accessType: 'Read-only', rolePermissions: 'Auditor / Reader role', recommendedMethod: 'Account', justification: 'Pull change and incident populations, sample tickets' },
+  { system: 'SIEM / Log management', accessType: 'Read-only', rolePermissions: 'Reader', recommendedMethod: 'Account', justification: 'Verify monitoring, retention, sample alerts' },
+  { system: 'In-scope ERP / Finance system', accessType: 'Read-only', rolePermissions: 'Auditor role with read on all modules', recommendedMethod: 'Account', justification: 'GL pull for IT spend, vendor master, PO data' },
+  { system: 'HRIS', accessType: 'Read-only or extract', rolePermissions: 'Reader / extract privilege', recommendedMethod: 'Account or one-time export', justification: 'Active employee listing for access reconciliation' },
+  { system: 'Document repository (SharePoint / Confluence / Notion)', accessType: 'Read access to IT/audit folder', rolePermissions: 'Reader', recommendedMethod: 'Account', justification: 'Policies, evidence, PBC dropbox' },
+  { system: 'Secure file share for evidence', accessType: 'Read/write to dedicated audit folder', rolePermissions: 'Owner of audit folder', recommendedMethod: 'SharePoint site / Egnyte / Box / equivalent', justification: 'Centralized evidence collection — TBD whether client provisions or auditor does' },
+  { system: 'Code repository (GitHub / GitLab / Azure DevOps)', accessType: 'Read-only', rolePermissions: 'Reader on org', recommendedMethod: 'Account', justification: 'Verify Dev/Prod separation, deployment evidence' },
+  { system: 'Vulnerability scanner (Qualys / Tenable / Rapid7)', accessType: 'Read-only', rolePermissions: 'Reader', recommendedMethod: 'Account', justification: 'Pull scan reports directly' },
+  { system: 'Endpoint / EDR console', accessType: 'Read-only', rolePermissions: 'Reader', recommendedMethod: 'Account', justification: 'Coverage and detection evidence' },
+  { system: 'SAM / License mgmt tool (Flexera / Snow / etc.)', accessType: 'Read-only', rolePermissions: 'Reader', recommendedMethod: 'Account', justification: 'License inventory and utilization' },
 ];
 
 // ---- Walkthroughs ----
+// Process areas, key topics, attendees, and durations are transcribed from the
+// workbook's Walkthroughs sheet. The description + objective are authored here
+// to give the portal the human context the spreadsheet doesn't carry.
 const WALKS: LibraryWalkthrough[] = [
-  { processArea: 'IT Governance', keyTopics: 'Org structure, steering committee cadence, policy ownership, exception process', attendees: 'CIO / IT Director', durationMin: 60 },
-  { processArea: 'Logical Access — Joiner / Mover / Leaver', keyTopics: 'Provisioning flow per app, manager approval, periodic review, deprovisioning SLAs', attendees: 'IAM Lead, HRIS owner', durationMin: 90 },
-  { processArea: 'Privileged Access', keyTopics: 'PAM tooling, break-glass procedures, admin account review', attendees: 'IT Security Lead', durationMin: 60 },
-  { processArea: 'Change Management', keyTopics: 'Ticket lifecycle, approvals, CAB, emergency changes, post-implementation review', attendees: 'Release Manager, Eng Lead', durationMin: 90 },
-  { processArea: 'Software Development Lifecycle', keyTopics: 'Branching strategy, code review, automated testing, deploy gates', attendees: 'Engineering Manager', durationMin: 60 },
-  { processArea: 'Backup & Restore', keyTopics: 'Backup schedule, retention, restore tests, offsite copies', attendees: 'Infra / Ops Lead', durationMin: 45 },
-  { processArea: 'Vulnerability & Patch Management', keyTopics: 'Scanning cadence, SLA per severity, exception tracking', attendees: 'IT Security Lead', durationMin: 60 },
-  { processArea: 'Incident Response', keyTopics: 'Detection, triage, comms, post-mortem cadence', attendees: 'IR Lead', durationMin: 60 },
-  { processArea: 'Third-Party Risk Management', keyTopics: 'Onboarding due diligence, ongoing monitoring, contract terms', attendees: 'Vendor Risk Manager', durationMin: 60 },
+  { processArea: 'Kickoff',
+    description: 'The opening session for the engagement. The audit team and client leadership align on scope, timeline, ways of working, and walk through the PBC list together so everyone knows what evidence is coming and when.',
+    objective: 'Confirm scope, timeline, and communication channels are agreed, and that the client understands the PBC request list.',
+    keyTopics: 'Scope, objectives, timeline, communication, PBC list walkthrough', attendees: 'CIO / IT Director, audit sponsor, project mgr', durationMin: 60 },
+  { processArea: 'Entity & system scoping',
+    description: 'A working session to lock down the audit boundary: which legal entities are in scope, what IT is shared vs. separate across them, and which applications and network segments matter.',
+    objective: 'Confirm the in-scope entities, shared services, and key applications so testing populations can be defined accurately.',
+    keyTopics: 'Entities in scope, shared services, application inventory, network architecture', attendees: 'IT Director, Enterprise Architect', durationMin: 60 },
+  { processArea: 'Logical access',
+    description: 'Walk through how users get, change, and lose access across in-scope systems — joiner/mover/leaver flows, privileged access handling, periodic access reviews, and MFA enforcement.',
+    objective: 'Confirm the access lifecycle is designed, approved, executed, and reviewed, with MFA enforced and deprovisioning happening on time.',
+    keyTopics: 'Provisioning, deprovisioning, access reviews, privileged access, MFA, JML', attendees: 'IAM lead, HR contact', durationMin: 90 },
+  { processArea: 'Change management',
+    description: 'Trace a normal and an emergency change from request to production: approvals, testing, dev/prod separation, and how source control and deployment gates enforce segregation of duties.',
+    objective: 'Confirm production changes are approved before deployment and that developers cannot deploy unreviewed code to production.',
+    keyTopics: 'Change workflow, approvals, dev/prod separation, emergency changes, source control', attendees: 'Change manager, DevOps lead', durationMin: 60 },
+  { processArea: 'IT operations',
+    description: 'A broad operations walkthrough covering backups and restore testing, monitoring and alerting, incident response, patching, and vulnerability management.',
+    objective: 'Confirm core operational controls — backup/restore, monitoring, incident response, patch and vulnerability management — are designed and operating.',
+    keyTopics: 'Backups, monitoring, incident response, patching, vulnerability mgmt', attendees: 'Ops manager, SecOps', durationMin: 90 },
+  { processArea: 'Cloud & infrastructure',
+    description: 'Review the cloud and network estate: M365/Azure/AWS configuration baselines, network segmentation, and cloud security posture management tooling.',
+    objective: 'Confirm cloud and network environments are configured to a secure baseline and that posture is monitored.',
+    keyTopics: 'M365/Azure/AWS configuration, network, segmentation, CSPM', attendees: 'Cloud architect, network lead', durationMin: 60 },
+  { processArea: 'Vendor & third party',
+    description: 'Walk through how third parties are onboarded, risk-assessed, and monitored — including how SOC reports are reviewed and how security terms make it into contracts.',
+    objective: 'Confirm critical vendors are subject to due diligence at onboarding and ongoing monitoring, with assurance reports reviewed.',
+    keyTopics: 'Vendor onboarding, SOC report review, contract management', attendees: 'Procurement, Vendor Risk', durationMin: 45 },
+  { processArea: 'Licensing',
+    description: 'A walkthrough of how software licenses are bought, assigned, reclaimed, and reconciled — covering SAM tooling, true-up exposure, and SaaS sprawl.',
+    objective: 'Confirm licensing is tracked against entitlements, with a process to reclaim unused seats and manage compliance risk.',
+    keyTopics: 'License procurement, assignment, true-up process, SAM tooling, SaaS sprawl', attendees: 'IT Asset Manager, Procurement', durationMin: 60 },
+  { processArea: 'IT spend',
+    description: 'Walk through how IT spend is budgeted, approved, and accounted for — purchase order and invoice approval, intercompany cost allocation, and capex vs. opex treatment.',
+    objective: 'Confirm IT spend is budgeted, approved through the right controls, and allocated and classified consistently.',
+    keyTopics: 'Budgeting, PO/invoice approval, intercompany allocation, capex/opex', attendees: 'IT Finance / Controller', durationMin: 60 },
+  { processArea: 'Physical & environmental',
+    description: 'A short session — only relevant if on-premise facilities exist — covering data center and server room physical access and environmental controls.',
+    objective: 'Confirm physical access to facilities is restricted and reviewed, and environmental controls are in place (where on-prem facilities exist).',
+    keyTopics: 'Data center access, environmental controls (if on-prem)', attendees: 'Facilities / IT Ops', durationMin: 30 },
+  { processArea: 'SOC 2 readiness',
+    description: 'A readiness-focused session on the SOC 2 programme: which Trust Services Criteria are in scope, the system description, the control matrix, and where the known gaps are.',
+    objective: 'Confirm the SOC 2 scope, system description, and control matrix are in place and understand the current gap-remediation status.',
+    keyTopics: 'Trust criteria scope, system description, control matrix, gap status', attendees: 'CISO / Compliance lead', durationMin: 90 },
 ];
 
-// ---- Entities (empty/example placeholders) ----
+// ---- Entities (illustrative placeholders) ----
+// The workbook's Entity Scope sheet is a blank per-client template, so these
+// stay as worked examples that show the kind of scoping rationale expected.
 const ENTITIES: LibraryEntity[] = [
   { legalEntity: 'HQ entity', countryLocation: null, itModel: 'Centralized', keyApplications: 'ERP, HRIS, CRM, SSO', hosting: 'Cloud', headcount: null, inScope: 'Y', rationale: 'Primary in-scope entity' },
   { legalEntity: 'EU subsidiary', countryLocation: null, itModel: 'Hybrid', keyApplications: 'Local AD + cloud apps', hosting: 'Hybrid', headcount: null, inScope: 'Y', rationale: 'Material entity in scope' },
@@ -179,19 +283,25 @@ const ENTITIES: LibraryEntity[] = [
 ];
 
 // ---- Sampling controls ----
+// Transcribed from the workbook's Sampling & Testing sheet. Sampling method is
+// left blank — it's a per-engagement decision once the population is received.
 const SAMPLING: LibrarySamplingItem[] = [
-  { controlArea: 'Joiner provisioning', controlDescription: 'New hires have access requested + approved before account creation', populationSource: 'HRIS new hires for the audit period', samplingMethod: 'Random sample, 25 (n>=25)' },
-  { controlArea: 'Leaver deprovisioning', controlDescription: 'Terminated employees have all access revoked within 24 hours of effective date', populationSource: 'HRIS terminations for the audit period', samplingMethod: 'Random sample, 25' },
-  { controlArea: 'Periodic access review', controlDescription: 'Manager certification of direct-report access at least annually per app', populationSource: 'Completed access reviews per in-scope app', samplingMethod: 'All reviews; trace 5 per review' },
-  { controlArea: 'Privileged access approval', controlDescription: 'Granting of admin access has documented approval', populationSource: 'Admin grants during the audit period', samplingMethod: 'Random sample, 25' },
-  { controlArea: 'Change approval', controlDescription: 'Production-impacting changes have documented approval before deployment', populationSource: 'Change tickets for the audit period', samplingMethod: 'Random sample, 25 (stratified by environment)' },
-  { controlArea: 'Emergency change post-review', controlDescription: 'Emergency changes have post-implementation review within 5 business days', populationSource: 'Emergency changes for the audit period', samplingMethod: 'All e-changes if <25, else random 25' },
-  { controlArea: 'Code review', controlDescription: 'Prod-bound code changes have peer review before merge', populationSource: 'Merged pull requests to production branches', samplingMethod: 'Random sample, 25' },
-  { controlArea: 'Patch SLA compliance', controlDescription: 'Critical OS patches applied within policy SLA', populationSource: 'Server inventory + scanner findings as of cutoff', samplingMethod: 'Risk-based: top critical findings + random 15' },
-  { controlArea: 'Backup restore test', controlDescription: 'At least one successful restore test per critical system per year', populationSource: 'List of critical systems', samplingMethod: 'All critical systems' },
-  { controlArea: 'Incident response', controlDescription: 'Incidents are triaged, communicated, and closed with post-mortem (if Sev1/Sev2)', populationSource: 'Incident tickets for the audit period', samplingMethod: 'All Sev1/Sev2 + random 10 lower-sev' },
-  { controlArea: 'Vendor due diligence', controlDescription: 'Critical vendors have current SOC 2 / risk assessment on file', populationSource: 'Critical vendor inventory', samplingMethod: 'All critical vendors' },
-  { controlArea: 'MFA enforcement', controlDescription: 'MFA is enforced for all interactive logins to in-scope apps', populationSource: 'Active users per in-scope app', samplingMethod: 'Configuration test (no sampling); spot-check 10 user logon events' },
+  { controlArea: 'Access — Joiner', controlDescription: 'New users provisioned with appropriate approval and access', populationSource: 'HR new hires during period', samplingMethod: '' },
+  { controlArea: 'Access — Leaver', controlDescription: 'Terminated users disabled timely (target SLA)', populationSource: 'HR terminations during period', samplingMethod: '' },
+  { controlArea: 'Access — Mover', controlDescription: 'Role changes reflected in access timely', populationSource: 'HR role change report', samplingMethod: '' },
+  { controlArea: 'Access — Privileged', controlDescription: 'Privileged access approved and reviewed periodically', populationSource: 'Privileged user list', samplingMethod: '' },
+  { controlArea: 'Access — Periodic Review', controlDescription: 'Access review completed and exceptions remediated', populationSource: 'Review evidence per system', samplingMethod: '' },
+  { controlArea: 'Change Mgmt — Standard', controlDescription: 'Changes approved, tested, deployed per process', populationSource: 'Change ticket export', samplingMethod: '' },
+  { controlArea: 'Change Mgmt — Emergency', controlDescription: 'Emergency changes have post-deployment approval', populationSource: 'Emergency change subset', samplingMethod: '' },
+  { controlArea: 'Backup', controlDescription: 'Backups complete successfully and restores tested', populationSource: 'Backup job logs / restore tickets', samplingMethod: '' },
+  { controlArea: 'Incident Mgmt', controlDescription: 'Incidents logged, classified, resolved within SLA', populationSource: 'Incident log', samplingMethod: '' },
+  { controlArea: 'Patch Mgmt', controlDescription: 'Patches deployed within SLA', populationSource: 'Patch reports / scan results', samplingMethod: '' },
+  { controlArea: 'Vulnerability Mgmt', controlDescription: 'Critical/high vulns remediated within SLA', populationSource: 'Scan reports', samplingMethod: '' },
+  { controlArea: 'Vendor Mgmt', controlDescription: 'New vendors risk-assessed and SOC reports reviewed', populationSource: 'Vendor onboarding list', samplingMethod: '' },
+  { controlArea: 'License Compliance', controlDescription: 'Licenses purchased ≥ deployed; usage justifies seats', populationSource: 'License inventory + usage report', samplingMethod: '' },
+  { controlArea: 'IT Spend — Invoices', controlDescription: '3-way match and approval evidence', populationSource: 'GL / AP detail', samplingMethod: '' },
+  { controlArea: 'IT Spend — Allocation', controlDescription: 'Intercompany allocations accurate and consistent', populationSource: 'Allocation calc + GL', samplingMethod: '' },
+  { controlArea: 'Training', controlDescription: 'Required security training completed per period', populationSource: 'LMS export', samplingMethod: '' },
 ];
 
 export const LIBRARY = {
