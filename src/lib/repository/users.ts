@@ -108,14 +108,38 @@ export async function upsertUserOnSignIn(
     }
 
     const systemRole: SystemRole = wantsPlatformAdmin ? 'platform_admin' : 'member';
-    // Legacy `role` column is no longer load-bearing but retained NOT NULL by
-    // the old migration; default it to client_reviewer to satisfy the constraint.
-    const r = (await tx.query<Row>(
-      `INSERT INTO users (entra_object_id, email, display_name, upn, role, system_role, last_seen_at)
-       VALUES ($1, $2, $3, $4, 'client_reviewer', $5, NOW())
-       RETURNING *`,
-      [entraObjectId, email, displayName, upn, systemRole]
+
+    // Adopt a pending invite, if one exists. An auditor can pre-add a member by
+    // email — that creates a placeholder row with entra_object_id = 'pending::<email>'
+    // and any memberships attached to it. On the invited user's first real sign-in
+    // we'd otherwise INSERT a brand-new row and orphan those memberships, so look
+    // for a placeholder by email first and adopt it by stamping the real OID.
+    const placeholder = (await tx.query<Row>(
+      `SELECT * FROM users
+        WHERE entra_object_id LIKE 'pending::%' AND LOWER(email) = $1
+        LIMIT 1`,
+      [emailLc]
     )).rows[0];
+
+    let r: Row;
+    if (placeholder) {
+      r = (await tx.query<Row>(
+        `UPDATE users SET entra_object_id = $1, email = $2, display_name = $3,
+                          upn = COALESCE($4, upn), system_role = $5, last_seen_at = NOW()
+          WHERE id = $6
+          RETURNING *`,
+        [entraObjectId, email, displayName, upn, systemRole, placeholder.id]
+      )).rows[0];
+    } else {
+      // Legacy `role` column is no longer load-bearing but retained NOT NULL by
+      // the old migration; default it to client_reviewer to satisfy the constraint.
+      r = (await tx.query<Row>(
+        `INSERT INTO users (entra_object_id, email, display_name, upn, role, system_role, last_seen_at)
+         VALUES ($1, $2, $3, $4, 'client_reviewer', $5, NOW())
+         RETURNING *`,
+        [entraObjectId, email, displayName, upn, systemRole]
+      )).rows[0];
+    }
 
     // Bootstrap convenience: a brand-new platform_admin is auto-added as
     // auditor_lead to any engagement that has no auditor_lead yet. Without

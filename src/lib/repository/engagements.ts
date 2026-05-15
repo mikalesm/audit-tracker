@@ -497,10 +497,21 @@ export async function getMembership(
 
 export async function listEngagementMembers(
   engagementId: number,
-): Promise<Array<Membership & { email: string; displayName: string | null }>> {
+): Promise<Array<Membership & {
+  email: string;
+  displayName: string | null;
+  /** `'pending::<email>'` when the invited user hasn't signed in yet. */
+  entraObjectId: string;
+  lastSeenAt: string | null;
+}>> {
   const db = await getDb();
-  const r = await db.query<MembershipRow & { email: string; display_name: string | null }>(
-    `SELECT m.*, u.email, u.display_name
+  const r = await db.query<MembershipRow & {
+    email: string;
+    display_name: string | null;
+    entra_object_id: string;
+    last_seen_at: string | Date | null;
+  }>(
+    `SELECT m.*, u.email, u.display_name, u.entra_object_id, u.last_seen_at
        FROM engagement_memberships m
        JOIN users u ON u.id = m.user_id
       WHERE m.engagement_id = $1
@@ -511,6 +522,10 @@ export async function listEngagementMembers(
     ...toMembership(row),
     email: row.email,
     displayName: row.display_name,
+    entraObjectId: row.entra_object_id,
+    lastSeenAt: row.last_seen_at instanceof Date
+      ? row.last_seen_at.toISOString()
+      : row.last_seen_at,
   }));
 }
 

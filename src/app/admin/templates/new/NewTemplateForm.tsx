@@ -1,25 +1,13 @@
 'use client';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
+// Canonical category list lives in the template library — keep this in lockstep
+// with PBC_CATEGORIES there (4 security categories were added in 2026-05).
+import { PBC_CATEGORIES, type PBCCategory } from '@/lib/templates/library';
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
 }
-
-const PBC_CATEGORIES = [
-  'Governance',
-  'Entities & Systems',
-  'Access Management',
-  'Change Management',
-  'IT Operations',
-  'Third Parties',
-  'Licensing',
-  'IT Spend',
-  'SOC 2 Readiness',
-  'Physical & Environmental',
-] as const;
-
-type PBCCategory = (typeof PBC_CATEGORIES)[number];
 
 export default function NewTemplateForm() {
   const router = useRouter();
@@ -141,7 +129,7 @@ export default function NewTemplateForm() {
               className="text-navy-700 hover:underline dark:text-navy-200">Clear</button>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
           {PBC_CATEGORIES.map(c => (
             <label
               key={c}
@@ -162,7 +150,9 @@ export default function NewTemplateForm() {
           ))}
         </div>
         <p className="text-[11px] text-ink-500 dark:text-slate-400 mt-2">
-          Items in unchecked categories aren&apos;t seeded into the template. You can always add more later by uploading an Excel from inside the template (Settings → Re-sync from Excel).
+          {categories.size} of {PBC_CATEGORIES.length} categories selected. Items in unchecked
+          categories aren&apos;t seeded. You can add more later via Settings → Re-sync from Excel
+          inside the template engagement.
         </p>
       </div>
 

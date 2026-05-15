@@ -53,6 +53,11 @@ export default async function AdminTemplatesPage() {
             When you create a new audit, you can pick a template and the new engagement is pre-populated with its rows. Per-client
             fields (status, dates, owner, notes, findings) are reset; the structural fields (category, item description, format, priority, TSC mapping) are copied as-is.
             <br /><br />
+            <strong>Per-entity items</strong> in the template (network maps, app inventories, access reviews, etc.) are instantiated
+            <em> once per in-scope entity</em> when the new audit is created. Group-wide items stay a single row. After creation, the
+            auditor can flip more entities in-scope and click <strong>Generate per-entity PBC items</strong> on the Entities page to add
+            the missing instances.
+            <br /><br />
             To <strong>edit</strong> a template, click <strong>Open</strong> below. The template becomes your current engagement and
             you can use Settings → Re-sync from Excel to import or update its content. Templates are never shown in the regular engagement picker.
           </p>
