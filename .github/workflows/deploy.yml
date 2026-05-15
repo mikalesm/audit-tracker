@@ -27,6 +27,12 @@ permissions:
   contents: read
   packages: write   # publish to ghcr.io
 
+# Opt every JavaScript-based action into the Node.js 24 runtime ahead of the
+# 2026-06-02 forced migration. GitHub-owned actions are already pinned to v5;
+# this flag covers docker/* and azure/login until they ship Node 24 majors.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 concurrency:
   group: deploy-${{ vars.AZURE_WEBAPP_NAME }}
   cancel-in-progress: false
@@ -37,7 +43,7 @@ jobs:
     outputs:
       image: ${{ steps.tag.outputs.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve image tag
         id: tag
