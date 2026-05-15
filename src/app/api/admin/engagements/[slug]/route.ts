@@ -4,6 +4,7 @@ import {
   setEngagementStatus,
   upsertMembership,
   deleteEngagement,
+  resetEngagementState,
   type EngagementStatus,
 } from '@/lib/repository/engagements';
 import { requirePlatformAdmin, isErrorResponse } from '@/lib/rbac';
@@ -50,4 +51,27 @@ export async function DELETE(_req: NextRequest, ctx: { params: { slug: string } 
   const result = await deleteEngagement(ctx.params.slug);
   if (!result) return NextResponse.json({ error: 'engagement not found' }, { status: 404 });
   return NextResponse.json({ ok: true, deleted: result });
+}
+
+/**
+ * POST { action: "reset", confirm: <slug> } — wipe history, evidence, and notes
+ * for an engagement and return its PBC/access/walkthrough/sampling rows to
+ * their seeded defaults. The structure (titles, categories, library template
+ * links) is preserved. Platform-admin only; `confirm` must echo the slug to
+ * make accidental triggers from a misclick impossible.
+ */
+export async function POST(req: NextRequest, ctx: { params: { slug: string } }) {
+  const actor = await requirePlatformAdmin();
+  if (isErrorResponse(actor)) return actor;
+  let body: { action?: string; confirm?: string };
+  try { body = await req.json(); } catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
+  if (body.action !== 'reset') {
+    return NextResponse.json({ error: 'unknown action' }, { status: 400 });
+  }
+  if (body.confirm !== ctx.params.slug) {
+    return NextResponse.json({ error: 'confirm must equal the engagement slug' }, { status: 400 });
+  }
+  const result = await resetEngagementState(ctx.params.slug);
+  if (!result) return NextResponse.json({ error: 'engagement not found' }, { status: 404 });
+  return NextResponse.json({ ok: true, reset: result });
 }
