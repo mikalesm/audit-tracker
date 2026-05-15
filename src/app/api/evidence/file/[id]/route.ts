@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { deleteEvidence, getEvidenceForDownload } from '@/lib/repository/evidence';
+import { deleteEvidence, getEvidenceForDownload, getEvidenceMeta } from '@/lib/repository/evidence';
 import { requireRole, isErrorResponse } from '@/lib/rbac';
 import { logAccess } from '@/lib/repository/users';
 import { withEngagement } from '@/lib/db';
@@ -36,11 +36,24 @@ export async function GET(req: NextRequest, ctx: { params: { id: string } }) {
   });
 }
 
+/**
+ * Allow the original uploader to remove their own evidence (typo, wrong file)
+ * and `auditor_lead` to remove anything. Plain `auditor` and `client_reviewer`
+ * cannot delete files they didn't upload — keeps audit history intact.
+ */
 export async function DELETE(_req: NextRequest, ctx: { params: { id: string } }) {
-  const actor = await requireRole('auditor_lead');
+  const actor = await requireRole('client_owner');
   if (isErrorResponse(actor)) return actor;
+  const id = parseInt(ctx.params.id, 10);
   return withEngagement(actor.engagement!.id, async () => {
-    await deleteEvidence(actor.engagement!.id, parseInt(ctx.params.id, 10), actor.userId);
+    const meta = await getEvidenceMeta(actor.engagement!.id, id);
+    if (!meta) return new NextResponse('Not found', { status: 404 });
+    const isLead = actor.role === 'auditor_lead';
+    const isUploader = meta.uploadedById !== null && meta.uploadedById === actor.userId;
+    if (!isLead && !isUploader) {
+      return new NextResponse('Forbidden', { status: 403 });
+    }
+    await deleteEvidence(actor.engagement!.id, id, actor.userId);
     return NextResponse.json({ ok: true });
   });
 }

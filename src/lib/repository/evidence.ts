@@ -83,9 +83,19 @@ export async function saveEvidence(
   // bug omits the engagement_id WHERE on the SQL side.
   const blobName = `eng-${engagementId}/${itemId}/${ts}-${safe}`;
 
+  // Prefer the filename-derived MIME whenever the browser-supplied type is
+  // missing or generic — otherwise the blob ends up tagged as
+  // `application/octet-stream` and browsers force a download instead of an
+  // inline preview.
+  const supplied = (contentType || '').trim().toLowerCase();
+  const isGeneric = !supplied || supplied === 'application/octet-stream' || supplied === 'binary/octet-stream';
+  const blobContentType = isGeneric
+    ? (mimeFromFilename(originalFilename) || 'application/octet-stream')
+    : contentType!;
+
   const container = await evidenceContainerFor(engagementId);
   await container.uploadBlockBlob(blobName, buffer, buffer.length, {
-    blobHTTPHeaders: { blobContentType: contentType || mimeFromFilename(originalFilename) || 'application/octet-stream' },
+    blobHTTPHeaders: { blobContentType },
     metadata: {
       uploadedby: userId === null ? '' : String(userId),
       originalfilename: originalFilename,
@@ -152,11 +162,28 @@ export async function getEvidenceForDownload(
   const container = await evidenceContainerFor(engagementId);
   const blob = container.getBlobClient(row.stored_path);
   const buffer = await blob.downloadToBuffer();
-  // Trust what was set at upload time, fall back to filename-derived MIME.
+  // Some uploads land in blob storage as `application/octet-stream` (the
+  // browser didn't supply a type). That forces a download instead of an
+  // inline preview, so prefer the filename-derived MIME whenever the stored
+  // type is missing or generic.
   const props = await blob.getProperties().catch(() => null);
-  const contentType =
-    props?.contentType
-    || mimeFromFilename(row.filename)
-    || 'application/octet-stream';
+  const blobType = props?.contentType?.trim().toLowerCase() || '';
+  const fromName = mimeFromFilename(row.filename);
+  const usable = blobType && blobType !== 'application/octet-stream' && blobType !== 'binary/octet-stream';
+  const contentType = usable ? props!.contentType! : (fromName || 'application/octet-stream');
   return { filename: row.filename, contentType, buffer };
+}
+
+/** Minimal metadata for permission checks (who uploaded a given file). */
+export async function getEvidenceMeta(
+  engagementId: number,
+  id: number,
+): Promise<{ uploadedById: number | null } | null> {
+  const db = await getDb();
+  const r = await db.query<{ uploaded_by_id: number | null }>(
+    'SELECT uploaded_by_id FROM evidence_files WHERE engagement_id = $1 AND id = $2',
+    [engagementId, id],
+  );
+  if (r.rows.length === 0) return null;
+  return { uploadedById: r.rows[0].uploaded_by_id === null ? null : Number(r.rows[0].uploaded_by_id) };
 }
