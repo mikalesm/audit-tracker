@@ -142,6 +142,10 @@ export interface ActivityLog {
   oldValue: string | null;
   newValue: string | null;
   ts: string;
+  /** Actor who triggered the change. Null for legacy rows / system actions. */
+  userId: number | null;
+  userEmail: string | null;
+  userName: string | null;
 }
 
 export interface EvidenceFile {

@@ -8,6 +8,7 @@ import { STATUSES, PRIORITIES, TSC_VALUES, formatDate, formatDateTime, fileSize,
 import { Upload, X, Trash2, Link2, Plus, Search, Info, ArrowRight, CheckCircle2, Building2, FileText, FileSpreadsheet, Archive, File as FileIcon, Image as ImageIcon, Eye, Download } from 'lucide-react';
 import ContextSection from '@/components/ui/ContextSection';
 import NotesThread from '@/components/pbc/NotesThread';
+import ActivityTimeline from '@/components/pbc/ActivityTimeline';
 import { CATEGORY_COVERAGE } from '@/lib/templates/library';
 
 type Role = 'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer';
@@ -574,19 +575,7 @@ export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor
           )}
 
           {tab === 'activity' && (
-            <div className="space-y-2">
-              {activity.length === 0 && <p className="text-[12px] text-ink-500">No activity yet.</p>}
-              {activity.map(a => (
-                <div key={a.id} className="text-[12.5px] flex items-start gap-2 py-1.5 border-b border-rule dark:border-navy-800 last:border-0">
-                  <span className="text-ink-500 tabular w-[120px] shrink-0">{formatDateTime(a.ts)}</span>
-                  <span className="text-ink-700 dark:text-slate-300">
-                    <span className="font-medium">{a.field}</span>
-                    {a.oldValue !== null && <> · <span className="text-ink-500 line-through">{a.oldValue}</span></>}
-                    {a.newValue !== null && <> → <span>{a.newValue}</span></>}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <ActivityTimeline items={activity} />
           )}
 
           {isAuditor && tab === 'comments' && (
