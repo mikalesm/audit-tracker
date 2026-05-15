@@ -39,11 +39,17 @@ through `deploy.yml` (manual / tag — never on push or merge).
 
 ## What still needs doing (immediately)
 
-1. **Review + merge PR #9.** Test plan is in the PR description.
-2. **Deploy to Azure** once merged — `deploy.yml` does not auto-run on merge;
+1. **Grant `User.Read.All` (Application) to the Audit Tracker Entra app
+   registration** (`698e870e-9465-4bf3-b9fd-7307e4aa1ae5`) and click
+   "Grant admin consent". Without this, the new Entra directory picker on the
+   Members page silently falls back to plain email entry (it's defensive — no
+   crash). With it, auditors get tenant-wide search/autocomplete.
+2. **Review + merge PR #9** (and PR #10 — handoff doc; and any newer PR for the
+   templates/members session). Test plans are in each PR description.
+3. **Deploy to Azure** once merged — `deploy.yml` does not auto-run on merge;
    trigger it manually (see "How to redeploy" below). Migration `0008` applies
    on container start.
-3. **Prod day-one steps are still pending** (untouched this session — they need
+4. **Prod day-one steps are still pending** (untouched this session — they need
    doing on the *prod* `audit1` instance, this session worked against a local
    `demo` engagement):
    1. Create the first template (Switch ▾ → Platform admin → Templates → + New).
@@ -64,6 +70,17 @@ A large UI + feature pass. Five themes, one commit (`376d63d`):
 
 Also done (local only, not in the PR): created a local `demo` engagement and a
 client user `client@example.test` for testing the client experience.
+
+### Follow-up landed in a separate PR (templates + members)
+
+After PR #9 merged we noticed two gaps and shipped fixes in a follow-up PR:
+
+| Theme | What shipped |
+| --- | --- |
+| **Templates menu** | `NewTemplateForm.tsx` was hardcoding the original 10 PBC categories — the 4 new security categories were not selectable when creating a template. Now imports the canonical `PBC_CATEGORIES` from `library.ts` (auto-stays in sync) and the explainer mentions per-entity instantiation. |
+| **Member invite bugfix** | `findOrCreatePlaceholderUser` creates a placeholder row keyed on `entra_object_id = 'pending::<email>'`, but `upsertUserOnSignIn` only matched on `entra_object_id` — so the real Entra OID never matched the placeholder and any email-invite was silently orphaned. `upsertUserOnSignIn` now adopts a pending placeholder by email before INSERT, preserving the membership rows. |
+| **Entra directory picker** | New `src/lib/graph.ts` (app-only `ClientSecretCredential`, reuses the NextAuth `AZURE_AD_*` env vars) + `GET /api/admin/entra-users?q=…`. The Members page Add-Member form gained a typeahead that searches the firm's tenant directory by displayName / mail / UPN (incl. B2B Guests). Gracefully degrades to plain email entry when Graph isn't configured (local dev) or the tenant lacks the required permission. |
+| **Members UX** | `MembersTable.tsx` now has a Single ↔ Bulk toggle (paste comma/newline-separated emails to invite many at once with a shared role), a per-member "Pending sign-in" pill (placeholder OID prefix) vs "Last seen <date>", role descriptions inline, and the listing now surfaces the user's display name above their email. `listEngagementMembers` returns `entraObjectId` and `lastSeenAt`. |
 
 ## Entity-scoped PBC items — how it works
 
@@ -185,21 +202,24 @@ src/
 │   ├── entities/EntitiesView.tsx      # entity table + "Generate per-entity PBC items" button
 │   ├── engagements/ admin/            # picker, members, platform-admin pages
 │   └── api/
-│       ├── pbc/ entities/             # entity-scoped routes wrap in withEngagement
-│       └── entities/sync-pbc/route.ts # POST → syncPbcEntityScope  (NEW)
+│       ├── pbc/ entities/                  # entity-scoped routes wrap in withEngagement
+│       ├── entities/sync-pbc/route.ts      # POST → syncPbcEntityScope
+│       └── admin/entra-users/route.ts      # GET ?q=… → searchEntraUsers via Graph  (NEW)
 ├── components/
 │   ├── shell/                        # Shell, EntityFilter, state.tsx (entityId context)
 │   ├── dashboard/                    # Dashboard (auditor), ClientDashboard (client)
 │   └── ui/                           # Card/Button/Badge/Input/Select, ContextSection, Help*
 ├── lib/
 │   ├── db.ts                         # withEngagement / withBypassRls / getDb, DbAdapter
+│   ├── graph.ts                      # Microsoft Graph user search (app-only ClientSecretCredential)  (NEW)
 │   ├── templates/library.ts          # in-code master library — scope + templateKey on PBC items
 │   ├── repository/
-│   │   ├── engagements.ts            # seedFromLibrary / seedPbcItems / copyTemplateRows
-│   │   └── pbc.ts                    # listPBC/updatePBC + syncPbcEntityScope  (NEW fn)
+│   │   ├── engagements.ts            # seedFromLibrary / seedPbcItems / copyTemplateRows; listEngagementMembers returns entraObjectId + lastSeenAt
+│   │   ├── users.ts                  # upsertUserOnSignIn now adopts a pending::<email> placeholder
+│   │   └── pbc.ts                    # listPBC/updatePBC + syncPbcEntityScope
 │   └── migrations/
 │       ├── 0001 … 0007               # baseline → multitenant → templates → RLS
-│       ├── 0008_pbc_entity_scope.sql # entity_id + template_key on pbc_items  (NEW)
+│       ├── 0008_pbc_entity_scope.sql # entity_id + template_key on pbc_items
 │       └── runner.ts
 ├── scripts/
 │   ├── check-library-sync.ts         # npm run check:library — drift-check (security cats excluded)
