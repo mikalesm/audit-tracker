@@ -177,9 +177,12 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
           </button>
 
           <Link href="/" className="flex items-center gap-2.5 shrink-0 min-w-0">
-            <div className="w-7 h-7 rounded-md bg-navy-700 flex items-center justify-center shrink-0">
-              <span className="text-white text-[11px] font-bold tracking-tight">IT</span>
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/carpa-tech-logo.png"
+              alt="Carpa Tech"
+              className="w-7 h-7 rounded-md object-contain shrink-0 dark:bg-white/5 dark:p-0.5"
+            />
             <div className="leading-tight min-w-0 max-w-[220px] hidden sm:block">
               <div className="text-[13px] font-semibold tracking-tight truncate">
                 {currentEng?.name ?? settings.projectTitle}

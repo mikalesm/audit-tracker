@@ -67,20 +67,19 @@ export default function ClientDashboard({
   const isOutstanding = (status: string) => !['Received', 'Reviewed', 'N/A'].includes(status);
 
   const owned = (pbc || []).filter(i => isOwnedByActor(i.ownerClient));
-  const ownedReceived = owned.filter(i => i.status === 'Received' || i.status === 'Reviewed');
+  const ownedOutstanding = owned.filter(i => isOutstanding(i.status));
+  const inProgressByActor = owned.filter(i => i.status === 'In Progress');
+  const submittedByActor = owned.filter(i => i.status === 'Received');
   const allOutstanding = (pbc || []).filter(i => isOutstanding(i.status));
 
-  // When the auditor has explicitly assigned items to this client, focus on
-  // those. Otherwise (common early in an engagement) fall back to everything
-  // the audit team is still waiting on — a useful dashboard from day one.
-  const hasAssignments = owned.length > 0;
-  const toProvide = hasAssignments
-    ? owned.filter(i => isOutstanding(i.status))
-    : allOutstanding;
+  // Always surface everything the audit team is still waiting on — auto-claim
+  // on first upload would otherwise collapse the dashboard down to that single
+  // owned row and hide the 80+ other requests. We highlight the actor's own
+  // items separately via the badge / progress-strip.
+  const toProvide = allOutstanding;
+  const ownedOutstandingIds = new Set(ownedOutstanding.map(i => i.id));
 
-  const overdueToShow = hasAssignments
-    ? (data?.overdue || []).filter(o => owned.some(x => x.id === o.id))
-    : (data?.overdue || []);
+  const overdueToShow = data?.overdue || [];
 
   const canUpload = actorRole === 'client_owner';
 
@@ -113,10 +112,23 @@ export default function ClientDashboard({
       .slice(0, 6);
   }, [toProvide]);
 
-  // `openCats === null` until the first interaction; until then the first
-  // category is expanded so the panel never opens as a wall of just headers.
+  // `openCats === null` until the first interaction. Default open: every
+  // category that contains an item the actor owns, plus the first 2 of the
+  // rest — so the actor never opens the page to a wall of headers, but tall
+  // engagements (10+ categories) don't auto-expand into a 200-row scroll.
   const [openCats, setOpenCats] = React.useState<Set<string> | null>(null);
-  const effectiveOpen = openCats ?? new Set(byCategory.slice(0, 1).map(c => c.category));
+  const effectiveOpen = React.useMemo(() => {
+    if (openCats) return openCats;
+    const auto = new Set<string>();
+    for (const c of byCategory) {
+      if (c.items.some(i => ownedOutstandingIds.has(i.id))) auto.add(c.category);
+    }
+    for (const c of byCategory) {
+      if (auto.size >= 3) break;
+      auto.add(c.category);
+    }
+    return auto;
+  }, [openCats, byCategory, ownedOutstandingIds]);
   function toggleCat(c: string) {
     const next = new Set(effectiveOpen);
     if (next.has(c)) next.delete(c); else next.add(c);
@@ -162,6 +174,28 @@ export default function ClientDashboard({
                   style={{ width: `${data.kpi.pctComplete}%` }}
                 />
               </div>
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* "Your activity" — actor-scoped progress strip, only when they own items */}
+      {pbc !== null && owned.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <span className="inline-flex items-center gap-2">
+                <Upload className="w-4 h-4 text-amber-700 dark:text-amber-300" />
+                Your activity
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardBody>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <ActorStat label="Assigned to you" value={owned.length} />
+              <ActorStat label="In progress" value={inProgressByActor.length} tone="active" />
+              <ActorStat label="Submitted" value={submittedByActor.length} tone="active" />
+              <ActorStat label="Reviewed" value={owned.filter(i => i.status === 'Reviewed').length} tone="positive" />
             </div>
           </CardBody>
         </Card>
@@ -258,17 +292,17 @@ export default function ClientDashboard({
           ) : toProvide.length === 0 ? (
             <EmptyState
               title="You're all caught up — nice."
-              body={hasAssignments
-                ? `You've completed ${ownedReceived.length} of ${owned.length} items assigned to you.`
-                : 'Every request has been provided. The audit team will reach out if they need anything else.'}
+              body="Every request has been provided. The audit team will reach out if they need anything else."
             />
           ) : (
             <>
               <div className="flex items-center justify-between gap-3 mb-3">
                 <p className="text-[12px] text-ink-500 dark:text-slate-400">
-                  {hasAssignments
-                    ? `${toProvide.length} item${toProvide.length === 1 ? '' : 's'} still to provide, across ${byCategory.length} area${byCategory.length === 1 ? '' : 's'}.`
-                    : `Nothing's assigned to you by name yet — here's everything the audit team is waiting on, by area.`}
+                  {toProvide.length} item{toProvide.length === 1 ? '' : 's'} still to provide
+                  {ownedOutstanding.length > 0 && (
+                    <> · <span className="text-amber-700 dark:text-amber-300 font-medium">{ownedOutstanding.length} on you</span></>
+                  )}{' '}
+                  · across {byCategory.length} area{byCategory.length === 1 ? '' : 's'}.
                 </p>
                 <Link href="/pbc" className="text-[12px] text-navy-700 dark:text-navy-200 hover:underline shrink-0">
                   Open full list →
@@ -283,6 +317,7 @@ export default function ClientDashboard({
                     total={g.total}
                     provided={g.provided}
                     high={g.high}
+                    ownedIds={ownedOutstandingIds}
                     open={effectiveOpen.has(g.category)}
                     onToggle={() => toggleCat(g.category)}
                   />
@@ -369,16 +404,18 @@ export default function ClientDashboard({
   );
 }
 
-function CategoryGroup({ category, items, total, provided, high, open, onToggle }: {
+function CategoryGroup({ category, items, total, provided, high, ownedIds, open, onToggle }: {
   category: string;
   items: OwnedItem[];
   total: number;
   provided: number;
   high: number;
+  ownedIds: Set<number>;
   open: boolean;
   onToggle: () => void;
 }) {
   const pct = total > 0 ? Math.round((provided / total) * 100) : 0;
+  const yoursInGroup = items.filter(i => ownedIds.has(i.id)).length;
   return (
     <div className="rounded-lg border border-rule dark:border-navy-800 overflow-hidden">
       <button
@@ -388,6 +425,11 @@ function CategoryGroup({ category, items, total, provided, high, open, onToggle 
       >
         <ChevronDown className={`w-4 h-4 text-ink-300 shrink-0 transition-transform ${open ? '' : '-rotate-90'}`} />
         <span className="text-[13px] font-semibold tracking-tight flex-1 min-w-0 truncate">{category}</span>
+        {yoursInGroup > 0 && (
+          <span className="inline-flex items-center gap-1 text-[10.5px] font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 ring-1 ring-inset ring-amber-200 dark:ring-amber-900 px-1.5 py-0.5 rounded shrink-0">
+            {yoursInGroup} yours
+          </span>
+        )}
         {high > 0 && (
           <span className="inline-flex items-center gap-1 text-[10.5px] font-medium text-amber-700 dark:text-amber-400 shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden /> {high} high
@@ -405,27 +447,37 @@ function CategoryGroup({ category, items, total, provided, high, open, onToggle 
       </button>
       {open && (
         <div className="divide-y divide-rule dark:divide-navy-800 border-t border-rule dark:border-navy-800">
-          {items.map(item => (
-            <Link
-              key={item.id}
-              href={`/pbc?id=${item.id}`}
-              className="py-2.5 px-3 flex items-center gap-3 hover:bg-canvas/60 dark:hover:bg-navy-900"
-            >
-              <span className="text-[10.5px] uppercase tracking-wider text-ink-500 dark:text-slate-400 font-mono shrink-0 w-10">
-                #{item.num}
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-medium truncate">{item.itemRequested}</div>
-                {item.dateRequested && (
-                  <div className="text-[11px] text-ink-500 dark:text-slate-400 mt-0.5">
-                    requested {formatDate(item.dateRequested)}
+          {items.map(item => {
+            const yours = ownedIds.has(item.id);
+            return (
+              <Link
+                key={item.id}
+                href={`/pbc?id=${item.id}`}
+                className={`py-2.5 px-3 flex items-center gap-3 hover:bg-canvas/60 dark:hover:bg-navy-900 ${yours ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''}`}
+              >
+                <span className="text-[10.5px] uppercase tracking-wider text-ink-500 dark:text-slate-400 font-mono shrink-0 w-10">
+                  #{item.num}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-medium truncate flex items-center gap-2">
+                    {yours && (
+                      <span className="text-[9.5px] uppercase tracking-wider font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-1 py-0.5 rounded shrink-0">
+                        Yours
+                      </span>
+                    )}
+                    <span className="truncate">{item.itemRequested}</span>
                   </div>
-                )}
-              </div>
-              <StatusPill status={item.status} />
-              <ArrowRight className="w-3.5 h-3.5 text-ink-500 shrink-0" />
-            </Link>
-          ))}
+                  {item.dateRequested && (
+                    <div className="text-[11px] text-ink-500 dark:text-slate-400 mt-0.5">
+                      requested {formatDate(item.dateRequested)}
+                    </div>
+                  )}
+                </div>
+                <StatusPill status={item.status} />
+                <ArrowRight className="w-3.5 h-3.5 text-ink-500 shrink-0" />
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
@@ -450,6 +502,19 @@ function Stat({ label, value, tone = 'neutral' }: { label: string; value: number
     <div>
       <div className="text-[10.5px] uppercase tracking-wider font-semibold text-ink-500 dark:text-slate-400">{label}</div>
       <div className={`text-[24px] font-semibold tracking-tight mt-1 ${toneClass}`}>{value}</div>
+    </div>
+  );
+}
+
+function ActorStat({ label, value, tone = 'neutral' }: { label: string; value: number; tone?: 'neutral' | 'active' | 'positive' }) {
+  const toneClass =
+    tone === 'positive' ? 'text-emerald-700 dark:text-emerald-300'
+    : tone === 'active' ? 'text-navy-700 dark:text-navy-200'
+    : 'text-ink-900 dark:text-slate-100';
+  return (
+    <div>
+      <div className="text-[10.5px] uppercase tracking-wider font-semibold text-ink-500 dark:text-slate-400">{label}</div>
+      <div className={`text-[20px] font-semibold tracking-tight mt-1 ${toneClass}`}>{value}</div>
     </div>
   );
 }
