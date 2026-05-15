@@ -78,6 +78,24 @@ interface Me {
   currentEngagement: Engagement | null;
 }
 
+interface SectionCounts {
+  pbc: number;
+  walkthroughs: number;
+  access: number;
+  entities: number;
+  sampling: number;
+}
+
+// Nav items that should disappear when the engagement has zero rows in their
+// section. Always-visible items (Dashboard, PBC List, Activity, Reports) are
+// not in this map.
+const SECTION_OF_PATH: Record<string, keyof SectionCounts> = {
+  '/walkthroughs': 'walkthroughs',
+  '/access': 'access',
+  '/entities': 'entities',
+  '/sampling': 'sampling',
+};
+
 export default function Shell({ settings, children }: { settings: EngagementSettings; children: React.ReactNode }) {
   const pathname = usePathname();
   // Render bare chrome on screens that own their own layout: sign-in, the
@@ -100,6 +118,7 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
   const router = useRouter();
   const [me, setMe] = React.useState<Me | null>(null);
   const [engagements, setEngagements] = React.useState<EngagementForUser[]>([]);
+  const [sectionCounts, setSectionCounts] = React.useState<SectionCounts | null>(null);
   const [authConfigured, setAuthConfigured] = React.useState(true);
   const [switcherOpen, setSwitcherOpen] = React.useState(false);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
@@ -110,6 +129,7 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
       const data = await r.json();
       setMe(data.user);
       setEngagements(data.engagements || []);
+      setSectionCounts(data.sectionCounts ?? null);
       if (data.user?.currentEngagement === null && (data.engagements?.length ?? 0) > 0) {
         router.replace('/engagements');
       }
@@ -122,12 +142,19 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
   const role: Role = (me?.currentRole as Role) ?? (authConfigured ? 'client_reviewer' : 'auditor_lead');
   const currentEng = me?.currentEngagement ?? null;
 
-  // Filter groups by role; drop groups that become empty.
+  // Filter groups by role and by per-engagement section presence; drop groups
+  // that become empty. Until sectionCounts loads we show role-allowed items —
+  // nothing flickers in/out for users with all sections present.
   const visibleGroups = React.useMemo(
     () => NAV_GROUPS
-      .map(g => ({ ...g, items: g.items.filter(i => ROLE_RANK[role] >= ROLE_RANK[i.minRole]) }))
+      .map(g => ({ ...g, items: g.items.filter(i => {
+        if (ROLE_RANK[role] < ROLE_RANK[i.minRole]) return false;
+        const section = SECTION_OF_PATH[i.href];
+        if (section && sectionCounts && sectionCounts[section] === 0) return false;
+        return true;
+      }) }))
       .filter(g => g.items.length > 0),
-    [role]
+    [role, sectionCounts]
   );
 
   async function switchTo(slug: string) {
