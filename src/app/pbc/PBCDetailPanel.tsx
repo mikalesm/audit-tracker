@@ -488,6 +488,9 @@ export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor
                       const meta = fileTypeMeta(f.contentType);
                       const fileUrl = `/api/evidence/file/${f.id}`;
                       const uploader = f.uploadedByName || f.uploadedByEmail || 'Unknown uploader';
+                      const canDelete =
+                        role === 'auditor_lead' ||
+                        (currentUserId > 0 && f.uploadedById === currentUserId);
                       return (
                         <li
                           key={f.id}
@@ -547,10 +550,14 @@ export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor
                             >
                               <Download className="w-3.5 h-3.5" />
                             </a>
-                            {role === 'auditor_lead' && (
+                            {canDelete && (
                               <button
-                                onClick={() => deleteFile(f.id)}
-                                title="Delete"
+                                onClick={() => {
+                                  if (confirm(`Delete "${f.filename}"? This cannot be undone.`)) {
+                                    deleteFile(f.id);
+                                  }
+                                }}
+                                title={role === 'auditor_lead' ? 'Delete' : 'Delete (your upload)'}
                                 className="inline-flex items-center justify-center w-7 h-7 rounded text-ink-500 hover:text-danger hover:bg-canvas dark:hover:bg-navy-800"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
