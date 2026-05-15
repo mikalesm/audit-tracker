@@ -126,6 +126,53 @@ export async function setEngagementStatus(slug: string, status: EngagementStatus
   return r.rows[0] ? toEngagement(r.rows[0]) : null;
 }
 
+/**
+ * Permanently delete an engagement (or template) and every row scoped to it.
+ *
+ * The 0004 migration added `engagement_id` to every domain table without
+ * `ON DELETE CASCADE` (only `engagement_memberships` has it), so the rows are
+ * wiped explicitly. Runs under `withBypassRls` since it spans tables RLS
+ * filters per-engagement, and inside a single transaction so a partial
+ * deletion never leaves orphans.
+ *
+ * Note: Azure Blob Storage containers (per-engagement evidence) are NOT
+ * deleted here — that's a best-effort cleanup the caller can do separately.
+ */
+export async function deleteEngagement(
+  slug: string,
+): Promise<{ id: number; slug: string; name: string } | null> {
+  return withBypassRls(async (tx) => {
+    const r = await tx.query<{ id: number; slug: string; name: string }>(
+      'SELECT id, slug, name FROM engagements WHERE slug = $1',
+      [slug],
+    );
+    if (r.rows.length === 0) return null;
+    const eng = r.rows[0];
+    const id = Number(eng.id);
+    // Order matters only for evidence_files↔pbc_items (CASCADE on item_id) and
+    // pbc_items↔entities (SET NULL on entity_id). Both are tolerant of either
+    // order, but we delete inbound-FK targets last for clarity.
+    const tables = [
+      'activity_log',
+      'access_log',
+      'saved_views',
+      'settings',
+      'evidence_files',
+      'access_requests',
+      'walkthroughs',
+      'sampling_items',
+      'pbc_items',
+      'entities',
+      'engagement_memberships',
+    ];
+    for (const t of tables) {
+      await tx.query(`DELETE FROM ${t} WHERE engagement_id = $1`, [id]);
+    }
+    await tx.query('DELETE FROM engagements WHERE id = $1', [id]);
+    return { id, slug: eng.slug, name: eng.name };
+  });
+}
+
 export async function getEngagementBySlug(slug: string): Promise<Engagement | null> {
   const db = await getDb();
   const r = await db.query<EngagementRow>(
