@@ -7,7 +7,7 @@ import { StatusPill } from '@/components/ui/badge';
 import KPIStrip from './KPIStrip';
 import CategoryBars from './CategoryBars';
 import PriorityDonut from './PriorityDonut';
-import { Download, FileText, Printer, ExternalLink, Building2 } from 'lucide-react';
+import { Download, FileText, Printer, ExternalLink, Building2, Flame, ArrowRight } from 'lucide-react';
 import { formatDate, formatDateTime, relativeTime } from '@/lib/utils';
 import type { EngagementSettings, Entity } from '@/types';
 import { useEntityFilter } from '@/components/shell/state';
@@ -27,8 +27,18 @@ interface DashboardData {
   entityScope: { inScope: number; total: number };
 }
 
+interface PriorityItem {
+  id: number; num: number; category: string; itemRequested: string;
+  status: string; priority: string; ownerClient: string | null;
+}
+
+const PRIORITY_RANK: Record<string, number> = {
+  'High': 0, 'Medium-High': 1, 'Medium': 2, 'Low-Medium': 3, 'Low': 4,
+};
+
 export default function Dashboard({ settings }: { settings: EngagementSettings }) {
   const [data, setData] = React.useState<DashboardData | null>(null);
+  const [pbc, setPbc] = React.useState<PriorityItem[]>([]);
   const { entityId, entities } = useEntityFilter();
   const selectedEntity: Entity | null = React.useMemo(
     () => entityId != null ? entities.find(e => e.id === entityId) ?? null : null,
@@ -37,7 +47,16 @@ export default function Dashboard({ settings }: { settings: EngagementSettings }
 
   React.useEffect(() => {
     fetch('/api/dashboard').then(r => r.json()).then(setData);
+    fetch('/api/pbc').then(r => r.ok ? r.json() : []).then(setPbc);
   }, []);
+
+  // The auditor's "do these first" list — top high-priority outstanding items.
+  const topPriority = React.useMemo(() => pbc
+    .filter(i => !['Received', 'Reviewed', 'N/A'].includes(i.status))
+    .sort((a, b) =>
+      (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9) || a.num - b.num)
+    .slice(0, 6),
+    [pbc]);
 
   if (!data) {
     return (
@@ -142,6 +161,56 @@ export default function Dashboard({ settings }: { settings: EngagementSettings }
 
       {/* KPI strip */}
       <KPIStrip kpi={data.kpi} trend={data.receivedTrend} entityScope={data.entityScope} />
+
+      {/* Focus areas — vibrant band surfacing the highest-priority outstanding items */}
+      {topPriority.length > 0 && (
+        <div className="mt-5 rounded-xl bg-gradient-to-br from-navy-700 via-navy-800 to-navy-900 p-5 text-white shadow-card">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-2.5">
+              <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-amber-400/20 ring-1 ring-amber-300/30">
+                <Flame className="w-4 h-4 text-amber-300" />
+              </span>
+              <div>
+                <h2 className="text-[14px] font-semibold tracking-tight">Focus areas</h2>
+                <p className="text-[11.5px] text-navy-200">
+                  High-priority items still outstanding — chase these first
+                </p>
+              </div>
+            </div>
+            <Link href="/pbc?priority=High" className="text-[12px] text-navy-100 hover:text-white shrink-0">
+              See all →
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {topPriority.map(item => (
+              <Link
+                key={item.id}
+                href={`/pbc?id=${item.id}`}
+                className="group rounded-lg bg-white/10 hover:bg-white/[0.16] ring-1 ring-white/15 p-3 transition-colors"
+              >
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className={`text-[9.5px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded ${
+                    item.priority === 'High'
+                      ? 'bg-amber-400 text-navy-900'
+                      : 'bg-white/20 text-white'
+                  }`}>
+                    {item.priority}
+                  </span>
+                  <span className="text-[10.5px] text-navy-200 font-mono">#{item.num}</span>
+                  <span className="ml-auto text-[10.5px] text-navy-200 truncate max-w-[140px]">{item.category}</span>
+                </div>
+                <div className="text-[12.5px] font-medium leading-snug line-clamp-2 mb-2">
+                  {item.itemRequested}
+                </div>
+                <div className="flex items-center justify-between gap-2 text-[11px] text-navy-200">
+                  <span className="truncate">{item.ownerClient ? `Owner: ${item.ownerClient}` : 'Unassigned'}</span>
+                  <ArrowRight className="w-3.5 h-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" />
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Two-column layout */}
       <div className="grid grid-cols-12 gap-5 mt-5">

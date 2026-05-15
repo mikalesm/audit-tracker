@@ -11,15 +11,91 @@ interface User {
   lastSeenAt: string | null;
 }
 
+interface EntraUser {
+  id: string;
+  displayName: string | null;
+  mail: string | null;
+  userPrincipalName: string | null;
+  userType: 'Member' | 'Guest' | null;
+}
+
 export default function AdminUsersTable({ initial, currentUserId }: { initial: User[]; currentUserId: number }) {
   const [users, setUsers] = React.useState<User[]>(initial);
   const [busyId, setBusyId] = React.useState<number | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [info, setInfo] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState('');
+
+  // Entra picker state
+  const [pickerQ, setPickerQ] = React.useState('');
+  const [pickerOpen, setPickerOpen] = React.useState(false);
+  const [pickerLoading, setPickerLoading] = React.useState(false);
+  const [pickerResults, setPickerResults] = React.useState<EntraUser[]>([]);
+  const [graphAvailable, setGraphAvailable] = React.useState<boolean | null>(null);
+  const [graphReason, setGraphReason] = React.useState<string | null>(null);
+  const [makeAdmin, setMakeAdmin] = React.useState(false);
+  const [adding, setAdding] = React.useState(false);
 
   async function refresh() {
     const r = await fetch('/api/users');
     if (r.ok) setUsers(await r.json());
+  }
+
+  // Debounced Entra search.
+  React.useEffect(() => {
+    const term = pickerQ.trim();
+    if (term.length < 2) { setPickerResults([]); setPickerOpen(false); return; }
+    setPickerLoading(true);
+    const handle = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/admin/entra-users?q=${encodeURIComponent(term)}`);
+        const data = await r.json() as { available: boolean; users: EntraUser[]; reason?: string };
+        setGraphAvailable(data.available);
+        setGraphReason(data.reason ?? null);
+        setPickerResults(data.users || []);
+        setPickerOpen(data.available && (data.users?.length ?? 0) > 0);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setPickerLoading(false);
+      }
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [pickerQ]);
+
+  async function addEntraUser(picked: EntraUser) {
+    setError(null);
+    setInfo(null);
+    setAdding(true);
+    try {
+      const email = picked.mail || picked.userPrincipalName;
+      if (!email) {
+        setError('That Entra entry has no email or UPN — pick another.');
+        return;
+      }
+      const r = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          entraObjectId: picked.id,
+          email,
+          displayName: picked.displayName,
+          systemRole: makeAdmin ? 'platform_admin' : 'member',
+        }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setError(body.error || 'Failed to add user');
+        return;
+      }
+      setInfo(`Added ${picked.displayName || email}${makeAdmin ? ' as platform admin' : ''}.`);
+      setPickerQ('');
+      setPickerResults([]);
+      setPickerOpen(false);
+      await refresh();
+    } finally {
+      setAdding(false);
+    }
   }
 
   async function patch(id: number, body: Record<string, unknown>) {
@@ -69,6 +145,71 @@ export default function AdminUsersTable({ initial, currentUserId }: { initial: U
 
   return (
     <>
+      <div className="bg-white dark:bg-navy-900 border border-rule dark:border-navy-700 rounded-lg p-4 mb-4">
+        <div className="text-[12px] uppercase tracking-wider font-semibold text-ink-500 dark:text-slate-400 mb-2">
+          Add user from Entra
+        </div>
+        <div className="flex flex-wrap gap-2 items-end">
+          <div className="flex-1 min-w-[280px] relative">
+            <label className="block text-[10.5px] uppercase tracking-wider font-semibold text-ink-500 dark:text-slate-400 mb-1">
+              Search the firm&apos;s Entra tenant
+            </label>
+            <input
+              type="text"
+              value={pickerQ}
+              onChange={e => setPickerQ(e.target.value)}
+              onFocus={() => { if (pickerResults.length > 0) setPickerOpen(true); }}
+              placeholder="Type a name, email, or UPN…"
+              className="w-full h-9 px-3 border border-rule dark:border-navy-700 rounded text-[13px] bg-canvas dark:bg-navy-950"
+              autoComplete="off"
+              disabled={adding}
+            />
+            {pickerOpen && (
+              <div className="absolute z-30 left-0 right-0 mt-1 bg-white dark:bg-navy-900 border border-rule dark:border-navy-700 rounded-lg shadow-lg max-h-[280px] overflow-y-auto">
+                {pickerLoading && <div className="px-3 py-2 text-[12px] text-ink-500">Searching Entra…</div>}
+                {!pickerLoading && pickerResults.map(u => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => addEntraUser(u)}
+                    disabled={adding}
+                    className="w-full text-left px-3 py-2 hover:bg-canvas dark:hover:bg-navy-800 border-b border-rule/60 dark:border-navy-800 last:border-0 disabled:opacity-50"
+                  >
+                    <div className="text-[13px] font-medium flex items-center gap-2">
+                      {u.displayName || u.userPrincipalName || u.mail}
+                      {u.userType === 'Guest' && (
+                        <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-200 ring-1 ring-amber-200 dark:ring-amber-900">Guest</span>
+                      )}
+                    </div>
+                    <div className="text-[11.5px] text-ink-500 dark:text-slate-400">
+                      {u.mail || u.userPrincipalName}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <label className="inline-flex items-center gap-2 h-9 px-2 text-[12.5px] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={makeAdmin}
+              onChange={e => setMakeAdmin(e.target.checked)}
+              className="accent-navy-700"
+              disabled={adding}
+            />
+            Make platform admin
+          </label>
+        </div>
+        <p className="text-[11.5px] text-ink-500 dark:text-slate-400 mt-2">
+          Pre-creates a user record in Audit Tracker. The picked Entra account can sign in immediately and lands as a regular member (or platform admin if ticked). Engagement-level access is granted on each engagement&apos;s Members page.
+        </p>
+        {graphAvailable === false && (
+          <p className="text-[11.5px] text-amber-700 dark:text-amber-300 mt-1">
+            Microsoft Graph isn&apos;t configured for this environment ({graphReason ?? 'no AZURE_AD_* env vars'}). New users self-create on first sign-in via Entra; you can promote them to platform admin from the table below afterwards.
+          </p>
+        )}
+      </div>
+
       <div className="flex items-center gap-2 mb-3">
         <input
           type="search"
@@ -81,6 +222,11 @@ export default function AdminUsersTable({ initial, currentUserId }: { initial: U
           {filtered.length} of {users.length}
         </span>
       </div>
+      {info && (
+        <div className="text-[12.5px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-900 rounded p-2 mb-3">
+          {info}
+        </div>
+      )}
       {error && (
         <div className="text-[12.5px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-900 rounded p-2 mb-3">
           {error}

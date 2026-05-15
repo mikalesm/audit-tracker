@@ -41,6 +41,34 @@ export default function AdminTemplatesTable({ initial }: { initial: Row[] }) {
     }
   }
 
+  async function deleteTemplate(row: Row) {
+    if (!confirm(
+      `Permanently delete template "${row.name}"?\n\n` +
+      `Engagements already created from this template are unaffected — they ` +
+      `were copied at creation time. The template itself, its PBC items, ` +
+      `walkthroughs, sampling, entities, and members are wiped.\n\n` +
+      `Click OK to type the template name to confirm.`
+    )) return;
+    const typed = prompt(`Type "${row.name}" to confirm permanent deletion:`);
+    if (typed !== row.name) {
+      setError('Deletion cancelled — name did not match.');
+      return;
+    }
+    setBusyId(row.id);
+    setError(null);
+    try {
+      const r = await fetch(`/api/admin/engagements/${row.slug}`, { method: 'DELETE' });
+      if (!r.ok) {
+        const b = await r.json().catch(() => ({}));
+        setError(b.error || 'Delete failed');
+        return;
+      }
+      setRows(rs => rs.filter(rr => rr.id !== row.id));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <>
       {error && (
@@ -83,13 +111,23 @@ export default function AdminTemplatesTable({ initial }: { initial: Row[] }) {
                   {new Date(row.createdAt).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                  <button
-                    onClick={() => joinAndOpen(row)}
-                    disabled={busyId === row.id}
-                    className="px-2.5 h-7 inline-flex items-center rounded border border-navy-700 text-navy-700 text-[11.5px] font-medium hover:bg-navy-50 dark:border-navy-300 dark:text-navy-200 dark:hover:bg-navy-800 disabled:opacity-50"
-                  >
-                    {row.isMember ? 'Open' : 'Open (auto-join)'}
-                  </button>
+                  <div className="inline-flex items-center gap-2">
+                    <button
+                      onClick={() => joinAndOpen(row)}
+                      disabled={busyId === row.id}
+                      className="px-2.5 h-7 inline-flex items-center rounded border border-navy-700 text-navy-700 text-[11.5px] font-medium hover:bg-navy-50 dark:border-navy-300 dark:text-navy-200 dark:hover:bg-navy-800 disabled:opacity-50"
+                    >
+                      {row.isMember ? 'Open' : 'Open (auto-join)'}
+                    </button>
+                    <button
+                      onClick={() => deleteTemplate(row)}
+                      disabled={busyId === row.id}
+                      className="px-2.5 h-7 inline-flex items-center rounded border border-red-300 text-red-700 text-[11.5px] hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950 disabled:opacity-50"
+                      title="Permanently delete this template"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

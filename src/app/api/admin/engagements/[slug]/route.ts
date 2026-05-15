@@ -3,6 +3,7 @@ import {
   getEngagementBySlug,
   setEngagementStatus,
   upsertMembership,
+  deleteEngagement,
   type EngagementStatus,
 } from '@/lib/repository/engagements';
 import { requirePlatformAdmin, isErrorResponse } from '@/lib/rbac';
@@ -36,4 +37,17 @@ export async function PATCH(req: NextRequest, ctx: { params: { slug: string } })
   }
 
   return NextResponse.json({ error: 'no-op: provide status or joinAs' }, { status: 400 });
+}
+
+/**
+ * DELETE — permanently remove an engagement (or template) and every row
+ * scoped to it. Platform-admin only. The deletion is destructive and
+ * unrecoverable — the UI confirms with the engagement's name first.
+ */
+export async function DELETE(_req: NextRequest, ctx: { params: { slug: string } }) {
+  const actor = await requirePlatformAdmin();
+  if (isErrorResponse(actor)) return actor;
+  const result = await deleteEngagement(ctx.params.slug);
+  if (!result) return NextResponse.json({ error: 'engagement not found' }, { status: 404 });
+  return NextResponse.json({ ok: true, deleted: result });
 }

@@ -65,6 +65,33 @@ export default function AdminEngagementsTable({ initial }: { initial: Row[] }) {
     }
   }
 
+  async function deleteEng(row: Row) {
+    if (!confirm(
+      `Permanently delete "${row.name}"?\n\n` +
+      `This wipes ALL PBC items, walkthroughs, sampling, entities, evidence ` +
+      `metadata, members, and activity for this engagement. It cannot be undone.\n\n` +
+      `Click OK to be asked to type the engagement name to confirm.`
+    )) return;
+    const typed = prompt(`Type "${row.name}" to confirm permanent deletion:`);
+    if (typed !== row.name) {
+      setError('Deletion cancelled — name did not match.');
+      return;
+    }
+    setBusyId(row.id);
+    setError(null);
+    try {
+      const r = await fetch(`/api/admin/engagements/${row.slug}`, { method: 'DELETE' });
+      if (!r.ok) {
+        const b = await r.json().catch(() => ({}));
+        setError(b.error || 'Delete failed');
+        return;
+      }
+      setRows(rs => rs.filter(rr => rr.id !== row.id));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <>
       {error && (
@@ -114,24 +141,34 @@ export default function AdminEngagementsTable({ initial }: { initial: Row[] }) {
                   {new Date(row.createdAt).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-2.5 text-right whitespace-nowrap">
-                  {row.isMember ? (
+                  <div className="inline-flex items-center gap-2">
+                    {row.isMember ? (
+                      <button
+                        onClick={() => openEngagement(row)}
+                        disabled={busyId === row.id}
+                        className="px-2.5 h-7 inline-flex items-center rounded border border-navy-700 text-navy-700 text-[11.5px] font-medium hover:bg-navy-50 dark:border-navy-300 dark:text-navy-200 dark:hover:bg-navy-800 disabled:opacity-50"
+                      >
+                        Open
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => joinAsLead(row)}
+                        disabled={busyId === row.id}
+                        className="px-2.5 h-7 inline-flex items-center rounded border border-rule dark:border-navy-700 text-[11.5px] hover:bg-canvas dark:hover:bg-navy-800 disabled:opacity-50"
+                        title="Add yourself as auditor_lead to this engagement"
+                      >
+                        Join as lead
+                      </button>
+                    )}
                     <button
-                      onClick={() => openEngagement(row)}
+                      onClick={() => deleteEng(row)}
                       disabled={busyId === row.id}
-                      className="px-2.5 h-7 inline-flex items-center rounded border border-navy-700 text-navy-700 text-[11.5px] font-medium hover:bg-navy-50 dark:border-navy-300 dark:text-navy-200 dark:hover:bg-navy-800 disabled:opacity-50"
+                      className="px-2.5 h-7 inline-flex items-center rounded border border-red-300 text-red-700 text-[11.5px] hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950 disabled:opacity-50"
+                      title="Permanently delete this engagement and all its data"
                     >
-                      Open
+                      Delete
                     </button>
-                  ) : (
-                    <button
-                      onClick={() => joinAsLead(row)}
-                      disabled={busyId === row.id}
-                      className="px-2.5 h-7 inline-flex items-center rounded border border-rule dark:border-navy-700 text-[11.5px] hover:bg-canvas dark:hover:bg-navy-800 disabled:opacity-50"
-                      title="Add yourself as auditor_lead to this engagement"
-                    >
-                      Join as lead
-                    </button>
-                  )}
+                  </div>
                 </td>
               </tr>
             ))}
