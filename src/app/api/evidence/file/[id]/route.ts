@@ -41,15 +41,12 @@ export async function GET(req: NextRequest, ctx: { params: { id: string } }) {
       });
     });
   } catch (err) {
-    // Surface the real failure in the response body so we can debug from the
-    // browser network tab. Prod-safe because the route requires authentication.
+    // Server logs carry the full detail (App Service log stream); the response
+    // stays generic to avoid leaking internals.
     const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
     const stack = err instanceof Error && err.stack ? err.stack : '';
     console.error('evidence-download:GET', { id, message, stack });
-    return new NextResponse(
-      `evidence-download failed (id=${id})\n${message}\n${stack}`,
-      { status: 500, headers: { 'content-type': 'text/plain; charset=utf-8' } },
-    );
+    return NextResponse.json({ error: 'download_failed' }, { status: 500 });
   }
 }
 

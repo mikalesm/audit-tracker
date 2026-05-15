@@ -27,6 +27,7 @@ type LogRow = {
   id: number; entity_type: string; entity_id: number;
   field: string; old_value: string | null; new_value: string | null;
   ts: string; user_id: number | null;
+  user_email: string | null; user_name: string | null;
 };
 
 function toLog(r: LogRow): ActivityLog {
@@ -38,14 +39,23 @@ function toLog(r: LogRow): ActivityLog {
     oldValue: r.old_value,
     newValue: r.new_value,
     ts: typeof r.ts === 'string' ? r.ts : new Date(r.ts as unknown as Date).toISOString(),
+    userId: r.user_id === null ? null : Number(r.user_id),
+    userEmail: r.user_email,
+    userName: r.user_name,
   };
 }
+
+const SELECT_LOG_WITH_USER = `
+  SELECT a.id, a.entity_type, a.entity_id, a.field, a.old_value, a.new_value, a.ts, a.user_id,
+         u.email AS user_email, u.display_name AS user_name
+    FROM activity_log a
+    LEFT JOIN users u ON u.id = a.user_id`;
 
 export async function recentActivity(engagementId: number, limit = 50): Promise<ActivityLog[]> {
   const db = await getDb();
   const r = await db.query<LogRow>(
-    `SELECT id, entity_type, entity_id, field, old_value, new_value, ts, user_id
-     FROM activity_log WHERE engagement_id = $1 ORDER BY ts DESC LIMIT $2`,
+    `${SELECT_LOG_WITH_USER}
+     WHERE a.engagement_id = $1 ORDER BY a.ts DESC LIMIT $2`,
     [engagementId, limit]
   );
   return r.rows.map(toLog);
@@ -58,10 +68,9 @@ export async function activityFor(
 ): Promise<ActivityLog[]> {
   const db = await getDb();
   const r = await db.query<LogRow>(
-    `SELECT id, entity_type, entity_id, field, old_value, new_value, ts, user_id
-     FROM activity_log
-      WHERE engagement_id = $1 AND entity_type = $2 AND entity_id = $3
-      ORDER BY ts DESC`,
+    `${SELECT_LOG_WITH_USER}
+      WHERE a.engagement_id = $1 AND a.entity_type = $2 AND a.entity_id = $3
+      ORDER BY a.ts DESC`,
     [engagementId, entityType, entityId]
   );
   return r.rows.map(toLog);
