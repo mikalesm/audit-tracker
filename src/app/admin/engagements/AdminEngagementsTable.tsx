@@ -65,6 +65,50 @@ export default function AdminEngagementsTable({ initial }: { initial: Row[] }) {
     }
   }
 
+  async function resetEng(row: Row) {
+    if (!confirm(
+      `Reset "${row.name}" to project start?\n\n` +
+      `This wipes the activity log, all uploaded evidence (database rows + blob ` +
+      `files), and PBC notes for this engagement, and resets every PBC item, ` +
+      `access request, walkthrough, and sampling row back to its seeded state ` +
+      `(status, dates, owner, notes cleared). The seeded structure — titles, ` +
+      `categories, library template links, entity scoping — is preserved.\n\n` +
+      `This cannot be undone.\n\n` +
+      `Click OK to be asked to type the engagement slug to confirm.`
+    )) return;
+    const typed = prompt(`Type "${row.slug}" to confirm reset:`);
+    if (typed !== row.slug) {
+      setError('Reset cancelled — slug did not match.');
+      return;
+    }
+    setBusyId(row.id);
+    setError(null);
+    try {
+      const r = await fetch(`/api/admin/engagements/${row.slug}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'reset', confirm: row.slug }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setError(data.error || 'Reset failed');
+        return;
+      }
+      const c = data.reset?.counts || {};
+      const summary = [
+        `${c.activity_log ?? 0} activity rows`,
+        `${c.evidence_files ?? 0} evidence rows`,
+        `${c.blobs_deleted ?? 0} blobs`,
+        `${c.pbc_notes ?? 0} notes`,
+        `${c.pbc_items_reset ?? 0} PBC items reset`,
+      ].join(' · ');
+      alert(`Reset complete for ${row.name}.\n\n${summary}`);
+      await refresh();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function deleteEng(row: Row) {
     if (!confirm(
       `Permanently delete "${row.name}"?\n\n` +
@@ -160,6 +204,14 @@ export default function AdminEngagementsTable({ initial }: { initial: Row[] }) {
                         Join as lead
                       </button>
                     )}
+                    <button
+                      onClick={() => resetEng(row)}
+                      disabled={busyId === row.id}
+                      className="px-2.5 h-7 inline-flex items-center rounded border border-amber-300 text-amber-700 text-[11.5px] hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950 disabled:opacity-50"
+                      title="Wipe history + evidence and reset all rows to seeded defaults"
+                    >
+                      Reset
+                    </button>
                     <button
                       onClick={() => deleteEng(row)}
                       disabled={busyId === row.id}

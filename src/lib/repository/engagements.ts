@@ -5,6 +5,7 @@ import {
   type LibrarySelection,
   type PBCCategory,
 } from '@/lib/templates/library';
+import { evidenceContainerFor } from '@/lib/blob';
 
 export type EngagementStatus = 'active' | 'closed' | 'archived';
 
@@ -211,6 +212,101 @@ export async function deleteEngagement(
     await tx.query('DELETE FROM engagements WHERE id = $1', [id]);
     return { id, slug: eng.slug, name: eng.name };
   });
+}
+
+/**
+ * Reset an engagement back to its seeded "project start" state. Wipes
+ * activity / access logs, evidence (DB rows + blob files), and PBC notes;
+ * clears state-bearing columns on pbc_items, access_requests, walkthroughs,
+ * and sampling_items but preserves the seeded structure (titles, categories,
+ * priorities, library template links, entity scoping, attendees/duration on
+ * walkthroughs, sampling planning numbers).
+ *
+ * Platform-admin only. Run inside `withBypassRls` so RLS doesn't hide rows
+ * from the cleanup. Blob deletion is best-effort and runs first — a failure
+ * there shouldn't take down the DB reset, and the per-engagement container
+ * is the only thing being touched.
+ */
+export async function resetEngagementState(slug: string): Promise<{
+  id: number; slug: string; name: string; counts: Record<string, number>;
+} | null> {
+  const db = await getDb();
+  const lookup = await db.query<{ id: number; slug: string; name: string }>(
+    'SELECT id, slug, name FROM engagements WHERE slug = $1',
+    [slug],
+  );
+  if (lookup.rows.length === 0) return null;
+  const meta = lookup.rows[0];
+  const id = Number(meta.id);
+
+  // 1) Best-effort blob wipe: list every blob in the per-engagement container
+  //    and delete it. Tolerant of missing container / network blips so the
+  //    DB reset still proceeds.
+  let blobsDeleted = 0;
+  try {
+    const container = await evidenceContainerFor(id);
+    for await (const blob of container.listBlobsFlat()) {
+      try {
+        await container.deleteBlob(blob.name);
+        blobsDeleted += 1;
+      } catch { /* swallow per-blob errors */ }
+    }
+  } catch { /* container missing in dev / Azurite down — skip */ }
+
+  // 2) DB reset in one bypass-RLS transaction.
+  const counts = await withBypassRls(async (tx) => {
+    const c: Record<string, number> = {};
+    for (const t of ['activity_log', 'access_log', 'evidence_files', 'pbc_notes']) {
+      const r = await tx.query(`DELETE FROM ${t} WHERE engagement_id = $1`, [id]);
+      c[t] = r.rowCount ?? 0;
+    }
+    const pbcReset = await tx.query(
+      `UPDATE pbc_items SET
+         status = 'Not Started',
+         date_requested = NULL,
+         date_received = NULL,
+         owner_client = NULL,
+         notes = NULL,
+         internal_comments = NULL,
+         updated_at = NOW()
+       WHERE engagement_id = $1`,
+      [id],
+    );
+    c.pbc_items_reset = pbcReset.rowCount ?? 0;
+    const accessReset = await tx.query(
+      `UPDATE access_requests SET
+         status = 'Not Requested',
+         provisioned_date = NULL,
+         owner_client = NULL,
+         notes = NULL,
+         updated_at = NOW()
+       WHERE engagement_id = $1`,
+      [id],
+    );
+    c.access_requests_reset = accessReset.rowCount ?? 0;
+    const wtReset = await tx.query(
+      `UPDATE walkthroughs SET
+         status = 'Not Scheduled',
+         proposed_date = NULL,
+         notes = NULL,
+         updated_at = NOW()
+       WHERE engagement_id = $1`,
+      [id],
+    );
+    c.walkthroughs_reset = wtReset.rowCount ?? 0;
+    const sampReset = await tx.query(
+      `UPDATE sampling_items SET
+         test_status = 'Not Started',
+         findings_summary = NULL,
+         updated_at = NOW()
+       WHERE engagement_id = $1`,
+      [id],
+    );
+    c.sampling_items_reset = sampReset.rowCount ?? 0;
+    return c;
+  });
+  counts.blobs_deleted = blobsDeleted;
+  return { id, slug: meta.slug, name: meta.name, counts };
 }
 
 export async function getEngagementBySlug(slug: string): Promise<Engagement | null> {
