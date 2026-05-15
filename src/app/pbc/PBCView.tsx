@@ -83,6 +83,7 @@ export default function PBCView() {
   const [openId, setOpenId] = React.useState<number | null>(initialId);
   const [cursor, setCursor] = React.useState<number | null>(null);
   const [role, setRole] = React.useState<'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer'>('auditor_lead');
+  const [currentUserId, setCurrentUserId] = React.useState<number>(0);
   const [viewMode, setViewMode] = useViewMode('pbc', 'cards');
   const { savedKey, flash } = useSaveIndicator();
   const undoStack = React.useRef<UndoOp[]>([]);
@@ -99,6 +100,7 @@ export default function PBCView() {
     loadSavedViews();
     fetch('/api/me').then(r => r.ok ? r.json() : null).then(d => {
       if (d?.user?.currentRole) setRole(d.user.currentRole);
+      if (d?.user?.userId) setCurrentUserId(d.user.userId);
     }).catch(() => {});
   }, []);
 
@@ -713,6 +715,7 @@ export default function PBCView() {
         <PBCDetailPanel
           item={openItem}
           role={role}
+          currentUserId={currentUserId}
           onClose={() => { setOpenId(null); router.replace('/pbc'); }}
           onPatch={(patch) => patchItem(openItem.id, patch)}
         />

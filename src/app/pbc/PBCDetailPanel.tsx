@@ -7,20 +7,24 @@ import { InlineDate, InlineSelect, InlineText } from '@/components/tables/Inline
 import { STATUSES, PRIORITIES, TSC_VALUES, formatDate, formatDateTime, fileSize, isOverdue } from '@/lib/utils';
 import { Upload, X, Trash2, Paperclip, Link2, Plus, Search, Info, ArrowRight, CheckCircle2, Building2 } from 'lucide-react';
 import ContextSection from '@/components/ui/ContextSection';
+import NotesThread from '@/components/pbc/NotesThread';
 import { CATEGORY_COVERAGE } from '@/lib/templates/library';
 
 type Role = 'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer';
 
 const GROUP_WIDE = '— Group-wide —';
 
-export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor_lead' }: {
+export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor_lead', currentUserId = 0 }: {
   item: PBCItem;
   onClose: () => void;
   onPatch: (patch: Partial<PBCItem>) => void;
   /** Used to gate the Internal Comments tab to auditors only. */
   role?: Role;
+  /** Drives notes-thread author identity (own-note edit/delete affordances). */
+  currentUserId?: number;
 }) {
   const isAuditor = role === 'auditor_lead' || role === 'auditor';
+  const canWriteNotes = isAuditor || role === 'client_owner';
   type Tab = 'detail' | 'evidence' | 'activity' | 'comments';
   const initialTab: Tab = 'detail';
   const [tab, setTab] = React.useState<Tab>(initialTab);
@@ -72,6 +76,9 @@ export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor
     if (res.ok) {
       const list = await fetch(`/api/evidence/${item.id}`).then(r => r.json());
       setEvidence(list);
+      // Refresh the parent's view of the item — the upload route may have
+      // auto-claimed ownership and moved the status to In Progress.
+      onPatch({});
     }
   }
 
@@ -265,31 +272,87 @@ export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor
                   </div>
                 </div>
               ) : (
-                // Client view: only the parts a client acts on or needs as
-                // context — not the audit team's internal tracking fields.
+                // Client view: stage-aware action buttons replace the dropdown.
+                // Auditor-only states (Reviewed / Requested / N/A) aren't
+                // client transitions — surface them as read-only context.
                 <div className="rounded-lg border border-rule dark:border-navy-800 bg-canvas/40 dark:bg-navy-900/40 p-3.5">
                   <div className="text-[11px] uppercase tracking-wide font-semibold text-ink-500 dark:text-slate-400 mb-2.5">
                     Your task
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="Status">
-                      <InlineSelect
-                        value={item.status} options={[...STATUSES]}
-                        onCommit={v => onPatch({ status: v as PBCItem['status'] })}
-                        renderValue={v => <StatusPill status={v} />}
-                      />
-                    </Field>
-                    <Field label="Owner (your side)">
-                      <InlineText value={item.ownerClient} onCommit={v => onPatch({ ownerClient: v })} placeholder="Unassigned" />
-                    </Field>
-                    <Field label="Priority">
-                      <span className="text-ink-700 dark:text-slate-300">{item.priority}</span>
-                    </Field>
-                    {entityName && (
-                      <Field label="Entity">
-                        <span className="text-ink-700 dark:text-slate-300">{entityName}</span>
-                      </Field>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] uppercase tracking-wide text-ink-500 dark:text-slate-400">Status</span>
+                      <StatusPill status={item.status} />
+                    </div>
+                    {(item.status === 'Not Started' || item.status === 'Requested') && (
+                      <button
+                        type="button"
+                        onClick={() => onPatch({ status: 'In Progress' as PBCItem['status'] })}
+                        className="w-full rounded-md bg-navy-700 text-white text-[13px] font-medium py-2 hover:bg-navy-800 transition-colors"
+                      >
+                        Start working on this
+                      </button>
                     )}
+                    {item.status === 'In Progress' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onPatch({ status: 'Received' as PBCItem['status'] })}
+                          disabled={evidence.length === 0}
+                          title={evidence.length === 0 ? 'Upload at least one file before submitting' : undefined}
+                          className="w-full rounded-md bg-emerald-600 text-white text-[13px] font-medium py-2 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed dark:disabled:bg-navy-800 dark:disabled:text-slate-500 transition-colors inline-flex items-center justify-center gap-2"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          Submit for review
+                        </button>
+                        {evidence.length === 0 && (
+                          <p className="text-[11.5px] text-ink-500 dark:text-slate-400 text-center">
+                            Upload at least one file before submitting.
+                          </p>
+                        )}
+                      </>
+                    )}
+                    {item.status === 'Received' && (
+                      <div className="rounded-md border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-900 px-3 py-2 flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <div className="flex-1 text-[12.5px] text-emerald-800 dark:text-emerald-200">
+                          Submitted — awaiting auditor review.
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onPatch({ status: 'In Progress' as PBCItem['status'] })}
+                          className="text-[11.5px] text-emerald-800 dark:text-emerald-200 hover:underline shrink-0"
+                          title="Move back to In Progress to add or change evidence"
+                        >
+                          Reopen
+                        </button>
+                      </div>
+                    )}
+                    {item.status === 'Reviewed' && (
+                      <div className="rounded-md border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-900 px-3 py-2 flex items-center gap-2 text-[12.5px] text-emerald-800 dark:text-emerald-200">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        Reviewed by the audit team.
+                      </div>
+                    )}
+                    {item.status === 'N/A' && (
+                      <div className="rounded-md border border-rule bg-canvas dark:bg-navy-900 px-3 py-2 text-[12.5px] text-ink-700 dark:text-slate-300">
+                        Marked Not Applicable by the audit team.
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-4 pt-1">
+                      <Field label="Owner (your side)">
+                        <InlineText value={item.ownerClient} onCommit={v => onPatch({ ownerClient: v })} placeholder="Unassigned" />
+                      </Field>
+                      <Field label="Priority">
+                        <span className="text-ink-700 dark:text-slate-300">{item.priority}</span>
+                      </Field>
+                      {entityName && (
+                        <Field label="Entity">
+                          <span className="text-ink-700 dark:text-slate-300">{entityName}</span>
+                        </Field>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -314,7 +377,12 @@ export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor
                   </ContextSection>
 
                   <ContextSection label="Notes" audience="both">
-                    <InlineText value={item.notes} onCommit={v => onPatch({ notes: v })} placeholder="Add a note…" multiline />
+                    <NotesThread
+                      pbcItemId={item.id}
+                      currentUserId={currentUserId}
+                      isAuditorLead={role === 'auditor_lead'}
+                      canWrite={canWriteNotes}
+                    />
                   </ContextSection>
 
                   <ContextSection label="Linked items" audience="internal">
@@ -346,7 +414,12 @@ export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor
                 </Group>
               ) : (
                 <ContextSection label="Notes" audience="both">
-                  <InlineText value={item.notes} onCommit={v => onPatch({ notes: v })} placeholder="Add a note for the audit team…" multiline />
+                  <NotesThread
+                    pbcItemId={item.id}
+                    currentUserId={currentUserId}
+                    isAuditorLead={false}
+                    canWrite={canWriteNotes}
+                  />
                 </ContextSection>
               )}
             </div>
