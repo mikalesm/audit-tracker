@@ -4,8 +4,8 @@ import type { PBCItem, EvidenceFile, ActivityLog, Entity } from '@/types';
 import { Button } from '@/components/ui/button';
 import { StatusPill, Badge } from '@/components/ui/badge';
 import { InlineDate, InlineSelect, InlineText } from '@/components/tables/InlineEdit';
-import { STATUSES, PRIORITIES, TSC_VALUES, formatDate, formatDateTime, fileSize, isOverdue } from '@/lib/utils';
-import { Upload, X, Trash2, Paperclip, Link2, Plus, Search, Info, ArrowRight, CheckCircle2, Building2 } from 'lucide-react';
+import { STATUSES, PRIORITIES, TSC_VALUES, formatDate, formatDateTime, fileSize, isOverdue, cn } from '@/lib/utils';
+import { Upload, X, Trash2, Link2, Plus, Search, Info, ArrowRight, CheckCircle2, Building2, FileText, FileSpreadsheet, Archive, File as FileIcon, Image as ImageIcon, Eye, Download } from 'lucide-react';
 import ContextSection from '@/components/ui/ContextSection';
 import NotesThread from '@/components/pbc/NotesThread';
 import { CATEGORY_COVERAGE } from '@/lib/templates/library';
@@ -13,6 +13,28 @@ import { CATEGORY_COVERAGE } from '@/lib/templates/library';
 type Role = 'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer';
 
 const GROUP_WIDE = '— Group-wide —';
+
+// Map a file's MIME type to an icon + tint + image flag, so the evidence list
+// can render image thumbnails inline and meaningful icons for everything else.
+function fileTypeMeta(mime: string | null): {
+  Icon: typeof FileIcon;
+  tint: string;
+  isImage: boolean;
+} {
+  const m = mime || '';
+  if (m.startsWith('image/')) return { Icon: ImageIcon, tint: 'text-violet-600 dark:text-violet-400', isImage: true };
+  if (m === 'application/pdf') return { Icon: FileText, tint: 'text-red-600 dark:text-red-400', isImage: false };
+  if (m.includes('sheet') || m === 'text/csv' || m === 'text/tab-separated-values' || m === 'application/vnd.ms-excel') {
+    return { Icon: FileSpreadsheet, tint: 'text-emerald-600 dark:text-emerald-400', isImage: false };
+  }
+  if (m.includes('word') || m.startsWith('text/')) {
+    return { Icon: FileText, tint: 'text-navy-600 dark:text-navy-300', isImage: false };
+  }
+  if (m.includes('zip') || m.includes('rar') || m.includes('tar') || m.includes('gz') || m.includes('7z')) {
+    return { Icon: Archive, tint: 'text-amber-600 dark:text-amber-400', isImage: false };
+  }
+  return { Icon: FileIcon, tint: 'text-ink-500', isImage: false };
+}
 
 export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor_lead', currentUserId = 0 }: {
   item: PBCItem;
@@ -431,30 +453,116 @@ export default function PBCDetailPanel({ item, onClose, onPatch, role = 'auditor
                 onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={e => { e.preventDefault(); setDragOver(false); uploadFiles(e.dataTransfer.files); }}
-                className={`border border-dashed rounded-lg px-4 py-6 text-center transition-colors ${dragOver ? 'border-navy-400 bg-navy-50 dark:bg-navy-900' : 'border-rule dark:border-navy-700'}`}
+                className={cn(
+                  'border border-dashed rounded-lg text-center transition-colors',
+                  dragOver
+                    ? 'border-navy-400 bg-navy-50 dark:bg-navy-900'
+                    : 'border-rule dark:border-navy-700',
+                  evidence.length === 0 ? 'px-4 py-8' : 'px-4 py-4',
+                )}
               >
-                <Upload className="w-5 h-5 mx-auto text-ink-500 mb-1.5" />
-                <div className="text-[13px] font-medium">Drop files to upload</div>
-                <div className="text-[11.5px] text-ink-500 mt-0.5">Files stay local in <code className="text-[11px]">data/evidence/{item.id}/</code></div>
-                <label className="inline-flex mt-2.5">
+                <Upload className={cn('mx-auto text-ink-500', evidence.length === 0 ? 'w-6 h-6 mb-2' : 'w-4 h-4 mb-1')} />
+                <div className={cn('font-medium text-ink-900 dark:text-slate-100', evidence.length === 0 ? 'text-[14px]' : 'text-[12.5px]')}>
+                  {evidence.length === 0 ? 'Drop files to upload' : 'Drop more files or'}
+                </div>
+                {evidence.length === 0 && (
+                  <div className="text-[11.5px] text-ink-500 mt-1">
+                    PDFs, images, spreadsheets, docs — any file the audit team needs.
+                  </div>
+                )}
+                <label className="inline-flex mt-2">
                   <input type="file" multiple className="hidden" onChange={e => uploadFiles(e.target.files)} />
-                  <span className="cursor-pointer inline-flex items-center text-[12px] text-navy-700 dark:text-navy-300 hover:underline">or browse</span>
+                  <span className="cursor-pointer inline-flex items-center text-[12px] font-medium text-navy-700 dark:text-navy-300 hover:underline">
+                    {evidence.length === 0 ? 'browse your computer' : 'browse'}
+                  </span>
                 </label>
               </div>
-              <div className="space-y-1.5">
-                {evidence.length === 0 && <p className="text-[12px] text-ink-500">No evidence uploaded yet.</p>}
-                {evidence.map(f => (
-                  <div key={f.id} className="flex items-center gap-2.5 px-3 py-2 border border-rule dark:border-navy-700 rounded">
-                    <Paperclip className="w-3.5 h-3.5 text-ink-500" />
-                    <a href={`/api/evidence/file/${f.id}`} className="text-[13px] truncate flex-1 hover:text-navy-700 dark:hover:text-navy-300">{f.filename}</a>
-                    <span className="text-[11px] text-ink-500 tabular">{fileSize(f.size)}</span>
-                    <span className="text-[11px] text-ink-500">{formatDate(f.uploadedAt)}</span>
-                    <button onClick={() => deleteFile(f.id)} className="p-1 rounded hover:bg-canvas dark:hover:bg-navy-800 text-ink-500 hover:text-danger">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+
+              {evidence.length > 0 && (
+                <div>
+                  <div className="text-[10.5px] uppercase tracking-wide font-semibold text-ink-500 dark:text-slate-400 mb-2">
+                    {evidence.length} file{evidence.length === 1 ? '' : 's'} submitted
                   </div>
-                ))}
-              </div>
+                  <ul className="space-y-2">
+                    {evidence.map(f => {
+                      const meta = fileTypeMeta(f.contentType);
+                      const fileUrl = `/api/evidence/file/${f.id}`;
+                      const uploader = f.uploadedByName || f.uploadedByEmail || 'Unknown uploader';
+                      return (
+                        <li
+                          key={f.id}
+                          className="group flex items-start gap-3 p-3 border border-rule rounded-lg bg-white dark:bg-navy-900 dark:border-navy-700 transition-shadow hover:shadow-card"
+                        >
+                          {meta.isImage ? (
+                            <a
+                              href={fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0 block w-12 h-12 rounded-md overflow-hidden bg-canvas dark:bg-navy-800 ring-1 ring-rule dark:ring-navy-700"
+                              title="Open"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={fileUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                            </a>
+                          ) : (
+                            <div className={cn(
+                              'shrink-0 w-12 h-12 rounded-md bg-canvas dark:bg-navy-800 ring-1 ring-rule dark:ring-navy-700 flex items-center justify-center',
+                              meta.tint,
+                            )}>
+                              <meta.Icon className="w-6 h-6" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <a
+                              href={fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[13px] font-medium text-ink-900 dark:text-slate-100 hover:text-navy-700 dark:hover:text-navy-300 truncate block"
+                            >
+                              {f.filename}
+                            </a>
+                            <div className="text-[11.5px] text-ink-500 dark:text-slate-400 mt-0.5 truncate">
+                              {uploader}
+                              <span className="mx-1.5">·</span>
+                              <span title={formatDateTime(f.uploadedAt)}>{formatDate(f.uploadedAt)}</span>
+                              <span className="mx-1.5">·</span>
+                              {fileSize(f.size)}
+                            </div>
+                          </div>
+                          <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                            <a
+                              href={fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Open in new tab"
+                              className="inline-flex items-center justify-center w-7 h-7 rounded text-ink-500 hover:text-ink-900 hover:bg-canvas dark:hover:bg-navy-800 dark:hover:text-slate-100"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </a>
+                            <a
+                              href={`${fileUrl}?download=1`}
+                              download={f.filename}
+                              title="Download"
+                              className="inline-flex items-center justify-center w-7 h-7 rounded text-ink-500 hover:text-ink-900 hover:bg-canvas dark:hover:bg-navy-800 dark:hover:text-slate-100"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </a>
+                            {role === 'auditor_lead' && (
+                              <button
+                                onClick={() => deleteFile(f.id)}
+                                title="Delete"
+                                className="inline-flex items-center justify-center w-7 h-7 rounded text-ink-500 hover:text-danger hover:bg-canvas dark:hover:bg-navy-800"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 

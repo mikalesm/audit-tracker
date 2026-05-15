@@ -151,6 +151,11 @@ export interface EvidenceFile {
   size: number;
   uploadedAt: string;
   storedPath: string;
+  /** MIME type sniffed from the filename when available (e.g. application/pdf). */
+  contentType: string | null;
+  uploadedById: number | null;
+  uploadedByEmail: string | null;
+  uploadedByName: string | null;
 }
 
 export interface EngagementSettings {
