@@ -117,6 +117,46 @@ export async function listAllEngagementsWithCounts(
   });
 }
 
+/** Row counts per "section" — drives nav visibility (hide empty sections). */
+export interface EngagementSectionCounts {
+  pbc: number;
+  walkthroughs: number;
+  access: number;
+  entities: number;
+  sampling: number;
+}
+
+/**
+ * Lightweight per-engagement section counts in one round-trip. Must run inside
+ * `withEngagement(engagementId, ...)` because every counted table has RLS.
+ */
+export async function engagementSectionCounts(engagementId: number): Promise<EngagementSectionCounts> {
+  const db = await getDb();
+  const r = await db.query<{
+    pbc: string | number;
+    walkthroughs: string | number;
+    access: string | number;
+    entities: string | number;
+    sampling: string | number;
+  }>(
+    `SELECT
+       (SELECT COUNT(*) FROM pbc_items       WHERE engagement_id = $1) AS pbc,
+       (SELECT COUNT(*) FROM walkthroughs    WHERE engagement_id = $1) AS walkthroughs,
+       (SELECT COUNT(*) FROM access_requests WHERE engagement_id = $1) AS access,
+       (SELECT COUNT(*) FROM entities        WHERE engagement_id = $1) AS entities,
+       (SELECT COUNT(*) FROM sampling_items  WHERE engagement_id = $1) AS sampling`,
+    [engagementId],
+  );
+  const row = r.rows[0];
+  return {
+    pbc: Number(row.pbc),
+    walkthroughs: Number(row.walkthroughs),
+    access: Number(row.access),
+    entities: Number(row.entities),
+    sampling: Number(row.sampling),
+  };
+}
+
 export async function setEngagementStatus(slug: string, status: EngagementStatus): Promise<Engagement | null> {
   const db = await getDb();
   const r = await db.query<EngagementRow>(
