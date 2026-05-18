@@ -5,8 +5,10 @@ import { TEST_STATUSES } from '@/lib/utils';
 import { InlineSelect, InlineText } from '@/components/tables/InlineEdit';
 import { StatusPill } from '@/components/ui/badge';
 import { SavedFlash, useSaveIndicator } from '@/components/tables/SavedIndicator';
-import { Calculator, Info } from 'lucide-react';
+import { Calculator, Info, Plus } from 'lucide-react';
 import HelpStrip from '@/components/ui/HelpStrip';
+import { Button } from '@/components/ui/button';
+import AddItemDialog from '@/components/ui/AddItemDialog';
 
 // AICPA-style sample size table (95% confidence, 5% tolerable rate, 0% expected) — auditor common reference.
 const SAMPLE_TABLE: { population: number; sample: number }[] = [
@@ -33,6 +35,14 @@ export default function SamplingView() {
   const [loading, setLoading] = React.useState(true);
   const { savedKey, flash } = useSaveIndicator();
   const [showHelper, setShowHelper] = React.useState(false);
+  const [showAdd, setShowAdd] = React.useState(false);
+  const [role, setRole] = React.useState<'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer'>('auditor_lead');
+
+  React.useEffect(() => {
+    fetch('/api/me').then(r => r.ok ? r.json() : null).then(d => {
+      if (d?.user?.currentRole) setRole(d.user.currentRole);
+    }).catch(() => {});
+  }, []);
 
   React.useEffect(() => { load(); }, []);
   async function load() { setItems(await (await fetch('/api/sampling')).json()); setLoading(false); }
@@ -63,6 +73,11 @@ export default function SamplingView() {
           >
             <Calculator className="w-3.5 h-3.5" /> Sample size table
           </button>
+          {role === 'auditor_lead' && (
+            <Button variant="primary" size="sm" onClick={() => setShowAdd(true)}>
+              <Plus className="w-3.5 h-3.5" /> Add sampling item
+            </Button>
+          )}
         </div>
       </div>
 
@@ -173,6 +188,44 @@ export default function SamplingView() {
           </tbody>
         </table>
       </div>
+
+      {showAdd && (
+        <AddItemDialog
+          title="Add sampling item"
+          description="Control area can be one of the existing groupings or a new free-text section name."
+          submitLabel="Add sampling item"
+          fields={[
+            {
+              name: 'controlArea',
+              label: 'Section / control area',
+              kind: 'combo',
+              required: true,
+              placeholder: 'e.g. Access Management',
+              options: Array.from(new Set(items.map(i => i.controlArea).filter(Boolean))).sort(),
+              help: 'Pick from existing control areas or type a new section.',
+            },
+            { name: 'controlDescription', label: 'Control description', kind: 'textarea', placeholder: 'What does this control do?' },
+            { name: 'populationSource', label: 'Population source', kind: 'text', placeholder: 'e.g. All changes Q1' },
+            { name: 'populationSize', label: 'Population size', kind: 'number' },
+            { name: 'sampleSize', label: 'Sample size', kind: 'number' },
+            { name: 'samplingMethod', label: 'Sampling method', kind: 'text', placeholder: 'Random / stratified / all' },
+          ]}
+          onClose={() => setShowAdd(false)}
+          onSubmit={async (values) => {
+            const res = await fetch('/api/sampling', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(values),
+            });
+            if (!res.ok) {
+              const body = await res.json().catch(() => ({}));
+              throw new Error(body.error || `Failed (${res.status})`);
+            }
+            await load();
+            flash();
+          }}
+        />
+      )}
     </div>
   );
 }

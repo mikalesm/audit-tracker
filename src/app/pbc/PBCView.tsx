@@ -9,10 +9,11 @@ import { StatusPill, Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SavedFlash, useSaveIndicator } from '@/components/tables/SavedIndicator';
 import PBCDetailPanel from './PBCDetailPanel';
-import { Filter, ChevronDown, X, ListFilter, Download, BookmarkPlus, Bookmark, Trash2, AlertTriangle, Building2 } from 'lucide-react';
+import { Filter, ChevronDown, X, ListFilter, Download, BookmarkPlus, Bookmark, Trash2, AlertTriangle, Building2, Plus } from 'lucide-react';
 import { useEntityFilter } from '@/components/shell/state';
 import HelpStrip from '@/components/ui/HelpStrip';
 import ViewToggle, { useViewMode } from '@/components/tables/ViewToggle';
+import AddItemDialog from '@/components/ui/AddItemDialog';
 
 type SortKey = 'num' | 'category' | 'priority' | 'status' | 'dateRequested' | 'dateReceived' | 'ownerClient';
 type SortDir = 'asc' | 'desc';
@@ -82,6 +83,7 @@ export default function PBCView() {
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const [openId, setOpenId] = React.useState<number | null>(initialId);
   const [cursor, setCursor] = React.useState<number | null>(null);
+  const [showAdd, setShowAdd] = React.useState(false);
   const [role, setRole] = React.useState<'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer'>('auditor_lead');
   const [currentUserId, setCurrentUserId] = React.useState<number>(0);
   const [viewMode, setViewMode] = useViewMode('pbc', 'cards');
@@ -371,6 +373,11 @@ export default function PBCView() {
             <a href="/api/export" className="inline-flex">
               <Button variant="secondary" size="sm"><Download className="w-3.5 h-3.5" /> Export</Button>
             </a>
+            {role === 'auditor_lead' && (
+              <Button variant="primary" size="sm" onClick={() => setShowAdd(true)}>
+                <Plus className="w-3.5 h-3.5" /> Add question
+              </Button>
+            )}
           </div>
         </div>
 
@@ -725,6 +732,65 @@ export default function PBCView() {
         <SaveViewDialog
           onClose={() => setShowSaveDialog(false)}
           onSave={async (name) => { await saveView(name); setShowSaveDialog(false); }}
+        />
+      )}
+
+      {showAdd && (
+        <AddItemDialog
+          title="Add PBC question"
+          description="The section can be one of the existing categories or a new free-text section name."
+          submitLabel="Add question"
+          fields={[
+            {
+              name: 'category',
+              label: 'Section',
+              kind: 'combo',
+              required: true,
+              placeholder: 'e.g. Governance, or type a new section name',
+              options: Array.from(new Set([...CATEGORIES, ...items.map(i => i.category)])).sort(),
+              help: 'Pick from the standard categories or type your own.',
+            },
+            {
+              name: 'itemRequested',
+              label: 'Question / item requested',
+              kind: 'textarea',
+              required: true,
+              placeholder: 'What evidence or answer do you need from the client?',
+            },
+            {
+              name: 'whyPurpose',
+              label: 'Why we need it',
+              kind: 'textarea',
+              placeholder: 'Optional — surfaces in the request to the client',
+            },
+            {
+              name: 'formatExpected',
+              label: 'Format expected',
+              kind: 'text',
+              placeholder: 'e.g. PDF export, screenshot, signed memo',
+            },
+            {
+              name: 'priority',
+              label: 'Priority',
+              kind: 'select',
+              options: PRIORITIES,
+              defaultValue: 'Medium',
+            },
+          ]}
+          onClose={() => setShowAdd(false)}
+          onSubmit={async (values) => {
+            const res = await fetch('/api/pbc', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(values),
+            });
+            if (!res.ok) {
+              const body = await res.json().catch(() => ({}));
+              throw new Error(body.error || `Failed (${res.status})`);
+            }
+            await load();
+            flash();
+          }}
         />
       )}
     </div>

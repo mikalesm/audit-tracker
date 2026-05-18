@@ -8,7 +8,9 @@ import { SavedFlash, useSaveIndicator } from '@/components/tables/SavedIndicator
 import HelpStrip from '@/components/ui/HelpStrip';
 import ViewToggle, { useViewMode } from '@/components/tables/ViewToggle';
 import ContextSection from '@/components/ui/ContextSection';
-import { X, KeyRound } from 'lucide-react';
+import { X, KeyRound, Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import AddItemDialog from '@/components/ui/AddItemDialog';
 
 type Role = 'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer';
 
@@ -17,6 +19,7 @@ export default function AccessView() {
   const [loading, setLoading] = React.useState(true);
   const [viewMode, setViewMode] = useViewMode('access', 'cards');
   const [openId, setOpenId] = React.useState<number | null>(null);
+  const [showAdd, setShowAdd] = React.useState(false);
   const [role, setRole] = React.useState<Role>('auditor_lead');
   const { savedKey, flash } = useSaveIndicator();
 
@@ -57,6 +60,11 @@ export default function AccessView() {
         <div className="flex items-center gap-2">
           <SavedFlash savedKey={savedKey} />
           <ViewToggle mode={viewMode} onChange={setViewMode} />
+          {role === 'auditor_lead' && (
+            <Button variant="primary" size="sm" onClick={() => setShowAdd(true)}>
+              <Plus className="w-3.5 h-3.5" /> Add access request
+            </Button>
+          )}
         </div>
       </div>
 
@@ -130,6 +138,43 @@ export default function AccessView() {
           isAuditor={isAuditor}
           onClose={() => setOpenId(null)}
           onPatch={(p) => patch(openItem.id, p)}
+        />
+      )}
+
+      {showAdd && (
+        <AddItemDialog
+          title="Add access request"
+          description="System can be one of the existing entries or a new free-text section name."
+          submitLabel="Add access request"
+          fields={[
+            {
+              name: 'system',
+              label: 'Section / system',
+              kind: 'combo',
+              required: true,
+              placeholder: 'e.g. Active Directory',
+              options: Array.from(new Set(items.map(i => i.system).filter(Boolean))).sort(),
+              help: 'Pick from existing systems or type a new section.',
+            },
+            { name: 'accessType', label: 'Access type', kind: 'text', placeholder: 'e.g. Read-only' },
+            { name: 'rolePermissions', label: 'Role / permissions', kind: 'text', placeholder: 'e.g. Domain Audit' },
+            { name: 'recommendedMethod', label: 'Recommended method', kind: 'text', placeholder: 'e.g. Built-in role' },
+            { name: 'justification', label: 'Justification', kind: 'textarea', placeholder: 'Why is this access required?' },
+          ]}
+          onClose={() => setShowAdd(false)}
+          onSubmit={async (values) => {
+            const res = await fetch('/api/access', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(values),
+            });
+            if (!res.ok) {
+              const body = await res.json().catch(() => ({}));
+              throw new Error(body.error || `Failed (${res.status})`);
+            }
+            await load();
+            flash();
+          }}
         />
       )}
     </div>

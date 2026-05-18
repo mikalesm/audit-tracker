@@ -81,3 +81,34 @@ export async function updateAccess(
   )).rows[0];
   return toItem(fresh);
 }
+
+export async function createAccess(
+  engagementId: number,
+  payload: Record<string, unknown>,
+  userId: number | null = null,
+): Promise<AccessRequest> {
+  const system = String(payload.system ?? '').trim();
+  if (!system) throw new Error('system is required');
+
+  const db = await getDb();
+  const next = (await db.query<{ n: number }>(
+    'SELECT COALESCE(MAX(num), 0) + 1 AS n FROM access_requests WHERE engagement_id = $1',
+    [engagementId]
+  )).rows[0].n;
+
+  const accessType = String(payload.accessType ?? '');
+  const rolePermissions = String(payload.rolePermissions ?? '');
+  const recommendedMethod = String(payload.recommendedMethod ?? '');
+  const justification = String(payload.justification ?? '');
+
+  const inserted = (await db.query<Row>(
+    `INSERT INTO access_requests
+       (engagement_id, num, system, access_type, role_permissions, recommended_method, justification)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING *`,
+    [engagementId, next, system, accessType, rolePermissions, recommendedMethod, justification]
+  )).rows[0];
+
+  await logActivity(engagementId, 'access', Number(inserted.id), 'created', null, system, userId);
+  return toItem(inserted);
+}

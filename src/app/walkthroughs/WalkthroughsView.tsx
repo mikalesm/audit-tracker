@@ -6,10 +6,11 @@ import { InlineDate, InlineSelect, InlineText } from '@/components/tables/Inline
 import { StatusPill, Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { SavedFlash, useSaveIndicator } from '@/components/tables/SavedIndicator';
-import { Calendar, List as ListIcon, X, Clock, Users, AlertTriangle } from 'lucide-react';
+import { Calendar, List as ListIcon, X, Clock, Users, AlertTriangle, Plus } from 'lucide-react';
 import HelpStrip from '@/components/ui/HelpStrip';
 import ViewToggle, { useViewMode } from '@/components/tables/ViewToggle';
 import ContextSection from '@/components/ui/ContextSection';
+import AddItemDialog from '@/components/ui/AddItemDialog';
 
 type View = 'list' | 'week';
 type Role = 'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer';
@@ -20,6 +21,7 @@ export default function WalkthroughsView() {
   const [view, setView] = React.useState<View>('list');
   const [viewMode, setViewMode] = useViewMode('walkthroughs', 'cards');
   const [openId, setOpenId] = React.useState<number | null>(null);
+  const [showAdd, setShowAdd] = React.useState(false);
   const [role, setRole] = React.useState<Role>('auditor_lead');
   const { savedKey, flash } = useSaveIndicator();
 
@@ -59,6 +61,11 @@ export default function WalkthroughsView() {
             <button onClick={() => setView('list')} className={`px-2 h-8 inline-flex items-center gap-1 text-[12px] rounded ${view === 'list' ? 'bg-canvas dark:bg-navy-800' : 'text-ink-500'}`}><ListIcon className="w-3.5 h-3.5" /> List</button>
             <button onClick={() => setView('week')} className={`px-2 h-8 inline-flex items-center gap-1 text-[12px] rounded ${view === 'week' ? 'bg-canvas dark:bg-navy-800' : 'text-ink-500'}`}><Calendar className="w-3.5 h-3.5" /> Week</button>
           </div>
+          {role === 'auditor_lead' && (
+            <Button variant="primary" size="sm" onClick={() => setShowAdd(true)}>
+              <Plus className="w-3.5 h-3.5" /> Add walkthrough
+            </Button>
+          )}
         </div>
       </div>
 
@@ -137,6 +144,43 @@ export default function WalkthroughsView() {
           isAuditor={isAuditor}
           onClose={() => setOpenId(null)}
           onPatch={(p) => patch(openItem.id, p)}
+        />
+      )}
+
+      {showAdd && (
+        <AddItemDialog
+          title="Add walkthrough"
+          description="Process area can be one of the existing groupings or a new free-text section name."
+          submitLabel="Add walkthrough"
+          fields={[
+            {
+              name: 'processArea',
+              label: 'Section / process area',
+              kind: 'combo',
+              required: true,
+              placeholder: 'e.g. Change Management',
+              options: Array.from(new Set(items.map(i => i.processArea).filter(Boolean))).sort(),
+              help: 'Pick from existing process areas or type a new section.',
+            },
+            { name: 'objective', label: 'Objective', kind: 'textarea', placeholder: 'What are we trying to confirm?' },
+            { name: 'description', label: 'Description', kind: 'textarea', placeholder: 'What can the team expect from this session?' },
+            { name: 'keyTopics', label: 'Key topics', kind: 'textarea', placeholder: 'Bullet list of topics to cover (optional)' },
+            { name: 'attendees', label: 'Attendees', kind: 'text', placeholder: 'Names or roles (optional)' },
+          ]}
+          onClose={() => setShowAdd(false)}
+          onSubmit={async (values) => {
+            const res = await fetch('/api/walkthroughs', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(values),
+            });
+            if (!res.ok) {
+              const body = await res.json().catch(() => ({}));
+              throw new Error(body.error || `Failed (${res.status})`);
+            }
+            await load();
+            flash();
+          }}
         />
       )}
     </div>
