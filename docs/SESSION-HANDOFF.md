@@ -1,3 +1,198 @@
+# Session handoff — 2026-05-18
+
+This is the running notebook for the audit-tracker project. Read this first at
+the start of a new session so you know what shape the system is in and what's
+next. This is the most recent entry — the **2026-05-14** entries below are
+preserved as history.
+
+## TL;DR (2026-05-18)
+
+Two PRs shipped this session, both merged to `main`:
+
+1. **PR #22 — admins can add ad-hoc questions and free-text sections** to
+   PBC, Walkthroughs, Sampling, and Access (live engagements AND inside
+   templates, since templates are just engagements). Backed by new `POST`
+   endpoints on each module and a shared `AddItemDialog` UI component. Build
+   passed, Azure deploy ran and `/api/healthz` smoke succeeded — **prod is
+   live with this change.**
+2. **PR #23 — `docs/PROJECT_OVERVIEW.md`** — a single 577-line reference
+   covering purpose, tech stack, identity & RBAC, multi-tenant isolation, DB
+   schema and migrations, every module, templates, evidence/blob, reports,
+   activity log, full UI map, full API surface (38 routes), code layout,
+   Azure infrastructure (Bicep + identity wiring), CI/CD, local dev, ops,
+   and known rough edges. Docs-only — no redeploy needed.
+
+Where things stand:
+
+- `main` is at merge commit `08ea7d2` (after PR #23).
+- Prod is running the PR #22 build deployed at `26015848322` (≈ 2026-05-18
+  05:45 UTC). Smoke-tested `/api/healthz`.
+- No outstanding branches in flight. No open PRs.
+
+## Where this session's work lives
+
+| PR | Branch | Merge commit | Status |
+| --- | --- | --- | --- |
+| #22 | `claude/admin-add-questions-sections` | `80769c1` | merged + deployed |
+| #23 | `claude/project-overview-doc` | `08ea7d2` | merged (docs-only) |
+
+No DB migration was needed — the "Add" feature only writes through existing
+columns. All four module tables already had the required schema.
+
+## What still needs doing (next sessions)
+
+1. **Manual QA pass** on the new "Add" buttons in prod:
+   - As `auditor_lead`, open `/pbc`, `/walkthroughs`, `/sampling`, `/access`
+     and create one row in each — one using an existing section, one with a
+     brand-new free-text section name. Confirm the row appears, the activity
+     log shows `created`, and the section is filterable on PBC/access.
+   - As `auditor` and `client_*`, confirm the **+ Add** button is hidden.
+   - Open a template via `/admin/templates → Open`, add a row, create a new
+     engagement from that template, verify the row is copied (no extra
+     wiring — `copyTemplateRows` already handles all four module tables).
+2. **Pending items carried forward from earlier sessions** (still open):
+   - Grant `User.Read.All` (Application) to the Entra app registration so the
+     Members-page directory picker works tenant-wide. Without it, the picker
+     silently falls back to plain email entry.
+   - Engagement start date / "Access by week 1" flag — not yet wired.
+   - Front Door + WAF + private endpoints — documented in
+     `infra/RUNBOOK.md`, default off in `workload.bicep`.
+   - Linked-items picker (PBC) UX polish.
+   - Activity-log retention purge — no auto-eviction yet.
+
+## What was done this session (2026-05-18)
+
+### PR #22 — admin "Add question / Add section"
+
+Per-module **+ Add** buttons in the top-right toolbar, visible only to
+`auditor_lead`. Each opens a small centred modal whose first field is a
+**section combobox** (datalist-backed) — existing sections are suggestions,
+typing a new name creates a free-text section on the fly. Submit posts to
+the existing module route; the row gets the next per-engagement `num`, a
+`created` row in the activity log, and shows up in the list.
+
+Files added:
+
+- `src/components/ui/AddItemDialog.tsx` — shared dialog. Supports `text`,
+  `textarea`, `select`, `combo`, `number` field kinds; renders an HTML
+  `<datalist>` for combos.
+
+Files modified:
+
+- Repositories — `src/lib/repository/{pbc,walkthroughs,sampling,access}.ts` —
+  added `createPBC`, `createWalkthrough`, `createSampling`, `createAccess`.
+  Each: validates the required structural field, assigns next `num` via
+  `MAX(num)+1` scoped to engagement, inserts with defaults, calls
+  `logActivity(…, 'created', …)`. `createPBC` also validates `entity_id`
+  belongs to the engagement (RLS scopes on `engagement_id`, not `entity_id`).
+- API — `src/app/api/{pbc,walkthroughs,sampling,access}/route.ts` — added
+  `POST` handlers gated by `requireRole('auditor_lead')`. Errors return 400
+  with the validation message; success returns 201 with the new row.
+- UI — `src/app/pbc/PBCView.tsx`, `walkthroughs/WalkthroughsView.tsx`,
+  `sampling/SamplingView.tsx`, `access/AccessView.tsx` — added a `+ Add`
+  button next to existing toolbar actions and wired `<AddItemDialog>` into
+  each. Section field suggestions come from the union of existing values in
+  the current list (PBC also seeds with the standard `CATEGORIES`).
+
+Templates: no code change. Templates are engagements with
+`is_template = TRUE`, so opening one and clicking **+ Add** writes into the
+template engagement, and `copyTemplateRows` in
+`src/lib/repository/engagements.ts` already copies all five module tables
+into new engagements seeded from a template.
+
+CI green (build, RLS isolation, migrations as non-superuser).
+`/api/healthz` smoke green.
+
+### PR #23 — `docs/PROJECT_OVERVIEW.md`
+
+A single comprehensive reference doc. Sections:
+
+1. Purpose
+2. Tech stack
+3. Identity & authentication (Entra, NextAuth split, three auth modes, role
+   table)
+4. Multi-tenant isolation (app filter + RLS fail-closed + per-engagement RG)
+5. Database schema (migrations 0001–0009, every domain table)
+6. Database access layer (`withEngagement` / `withBypassRls`)
+7. Modules — PBC, Walkthroughs, Sampling, Access, Entities, plus
+   admin-added questions
+8. Templates (and `copyTemplateRows`)
+9. Evidence storage (Blob, SAS URLs)
+10. Reports (`@react-pdf/renderer`)
+11. Activity log
+12. UI map (every page + keyboard shortcuts)
+13. API surface — all 38 routes
+14. Code layout
+15. Infrastructure — Bicep resources, Managed Identity wiring, GitHub OIDC
+16. CI/CD (`ci.yml` + `deploy.yml`)
+17. Local development scripts
+18. Operations (backups, restore, smoke, retention)
+19. Known rough edges
+20. Quick links to source
+
+Zero sensitive content — only structure and intent. No keys, secrets,
+customer names, tenant IDs, or live URLs.
+
+## Live state (prod, end of session)
+
+- `main` head: `08ea7d2`.
+- Last container deployed: built from `80769c1` via deploy run
+  `26015848322`. `/api/healthz` returned green.
+- Schema: through migration `0009_pbc_notes_thread.sql`. No new migration
+  this session.
+- Templates: unchanged. Admins can now extend them on the fly via the new
+  Add UI.
+
+## How to redeploy after a future change
+
+```bash
+# Branch + PR + merge — main is harness-blocked, always via PR.
+git checkout -b claude/<your-branch>
+# … edits …
+git commit -m "…"
+git push -u origin claude/<your-branch>
+gh pr create --title "…" --body "…"
+gh pr checks <num>            # wait for CI green
+gh pr merge <num> --merge
+
+# Then trigger Azure deploy — it does NOT auto-run on merge.
+gh workflow run deploy.yml --ref main
+gh run watch <run-id> --exit-status
+# Confirm /api/healthz on the App Service hostname.
+```
+
+`deploy.yml` builds the container, pushes to ghcr.io, points the App Service
+at the new tag, restarts, and smoke-tests `/api/healthz` — all via OIDC
+Federated Identity, no stored credentials.
+
+## Reference: where to find things
+
+The new `docs/PROJECT_OVERVIEW.md` is the authoritative map. Quick pointers
+for hand-off purposes:
+
+- New code from this session: `src/components/ui/AddItemDialog.tsx`,
+  `create*` functions in `src/lib/repository/{pbc,walkthroughs,sampling,access}.ts`,
+  `POST` handlers in `src/app/api/{pbc,walkthroughs,sampling,access}/route.ts`,
+  and the Add-button wiring in each `*View.tsx`.
+- Templates copy logic: `src/lib/repository/engagements.ts` →
+  `copyTemplateRows`.
+- RLS / isolation: `src/lib/migrations/0007_rls.sql`,
+  `withEngagement` / `withBypassRls` in `src/lib/db.ts`.
+
+## Open questions / decisions to make next session
+
+- Should the **+ Add** button also be available to plain `auditor` (not just
+  `auditor_lead`)? Currently gated to lead. Easy to relax in both the route
+  guard (`requireRole`) and the UI conditional.
+- Section/category cleanup: now that admins can invent custom sections,
+  should the UI auto-suggest merging near-duplicates (e.g. "Change Mgmt" vs
+  "Change Management")? Not currently in scope.
+- Should the new `create*` activity row include a short link in the timeline
+  so reviewers can jump straight to the new item? Currently it just records
+  the section/text in `new_value`.
+
+---
+
 # Session handoff — 2026-05-14
 
 This is the running notebook for the audit-tracker project. Read this first at
