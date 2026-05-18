@@ -79,3 +79,38 @@ export async function updateSampling(
   )).rows[0];
   return toItem(fresh);
 }
+
+export async function createSampling(
+  engagementId: number,
+  payload: Record<string, unknown>,
+  userId: number | null = null,
+): Promise<SamplingItem> {
+  const controlArea = String(payload.controlArea ?? '').trim();
+  if (!controlArea) throw new Error('controlArea is required');
+
+  const db = await getDb();
+  const next = (await db.query<{ n: number }>(
+    'SELECT COALESCE(MAX(num), 0) + 1 AS n FROM sampling_items WHERE engagement_id = $1',
+    [engagementId]
+  )).rows[0].n;
+
+  const controlDescription = String(payload.controlDescription ?? '');
+  const populationSource = String(payload.populationSource ?? '');
+  const samplingMethod = String(payload.samplingMethod ?? '');
+  const popSize = payload.populationSize === undefined || payload.populationSize === null || payload.populationSize === ''
+    ? null : Number(payload.populationSize);
+  const sampSize = payload.sampleSize === undefined || payload.sampleSize === null || payload.sampleSize === ''
+    ? null : Number(payload.sampleSize);
+
+  const inserted = (await db.query<Row>(
+    `INSERT INTO sampling_items
+       (engagement_id, num, control_area, control_description, population_source,
+        population_size, sample_size, sampling_method)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING *`,
+    [engagementId, next, controlArea, controlDescription, populationSource, popSize, sampSize, samplingMethod]
+  )).rows[0];
+
+  await logActivity(engagementId, 'sampling', Number(inserted.id), 'created', null, controlArea, userId);
+  return toItem(inserted);
+}

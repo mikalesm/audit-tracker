@@ -93,6 +93,36 @@ export async function updateWalkthrough(
   return toItem(fresh);
 }
 
+export async function createWalkthrough(
+  engagementId: number,
+  payload: Record<string, unknown>,
+  userId: number | null = null,
+): Promise<Walkthrough> {
+  const processArea = String(payload.processArea ?? '').trim();
+  if (!processArea) throw new Error('processArea is required');
+
+  const db = await getDb();
+  const next = (await db.query<{ n: number }>(
+    'SELECT COALESCE(MAX(num), 0) + 1 AS n FROM walkthroughs WHERE engagement_id = $1',
+    [engagementId]
+  )).rows[0].n;
+
+  const description = payload.description === undefined || payload.description === '' ? null : String(payload.description);
+  const objective = payload.objective === undefined || payload.objective === '' ? null : String(payload.objective);
+  const keyTopics = String(payload.keyTopics ?? '');
+  const attendees = String(payload.attendees ?? '');
+  const inserted = (await db.query<Row>(
+    `INSERT INTO walkthroughs
+       (engagement_id, num, process_area, description, objective, key_topics, attendees)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING *`,
+    [engagementId, next, processArea, description, objective, keyTopics, attendees]
+  )).rows[0];
+
+  await logActivity(engagementId, 'walkthrough', Number(inserted.id), 'created', null, processArea, userId);
+  return toItem(inserted);
+}
+
 export async function upcomingWalkthroughs(engagementId: number, days: number) {
   const db = await getDb();
   const r = await db.query<Row>(

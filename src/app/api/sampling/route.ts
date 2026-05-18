@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
-import { listSampling } from '@/lib/repository/sampling';
+import { NextRequest, NextResponse } from 'next/server';
+import { listSampling, createSampling } from '@/lib/repository/sampling';
 import { requireRole, isErrorResponse } from '@/lib/rbac';
 import { withEngagement } from '@/lib/db';
 
@@ -11,4 +11,18 @@ export async function GET() {
   return withEngagement(actor.engagement!.id, async () =>
     NextResponse.json(await listSampling(actor.engagement!.id))
   );
+}
+
+export async function POST(req: NextRequest) {
+  const actor = await requireRole('auditor_lead');
+  if (isErrorResponse(actor)) return actor;
+  const body = await req.json();
+  return withEngagement(actor.engagement!.id, async () => {
+    try {
+      const item = await createSampling(actor.engagement!.id, body, actor.userId);
+      return NextResponse.json(item, { status: 201 });
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+    }
+  });
 }
