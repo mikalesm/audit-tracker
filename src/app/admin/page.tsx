@@ -70,7 +70,7 @@ export default async function AdminHome() {
             <NavCard
               href="/admin/users"
               title="Users"
-              body="Grant or revoke platform_admin. Deactivate a user across all engagements at once. (Per-engagement roles live on each engagement's Members page.)"
+              body="Grant or revoke platform_admin. Deactivate a user across all engagements at once. (Per-engagement roles: open the Engagements tab and click a member count.)"
             />
           </div>
 

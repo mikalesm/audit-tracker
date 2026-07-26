@@ -231,6 +231,15 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
                     >
                       View all engagements
                     </Link>
+                    {currentEng && (me?.currentRole === 'auditor_lead' || me?.systemRole === 'platform_admin') && (
+                      <Link
+                        href={`/engagements/${currentEng.slug}/members`}
+                        onClick={() => setSwitcherOpen(false)}
+                        className="block px-2 py-1.5 rounded text-[12px] hover:bg-canvas dark:hover:bg-navy-800"
+                      >
+                        Manage members
+                      </Link>
+                    )}
                     {me?.systemRole === 'platform_admin' && (
                       <>
                         <Link
@@ -290,7 +299,7 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
               <GlobalSearch />
             </div>
             <ThemeToggle />
-            {authConfigured && <UserMenu user={me ? { email: me.email, role: me.currentRole ?? '' } : null} />}
+            {authConfigured && <UserMenu user={me ? { email: me.email, role: me.currentRole ?? '', systemRole: me.systemRole } : null} />}
           </div>
         </div>
 

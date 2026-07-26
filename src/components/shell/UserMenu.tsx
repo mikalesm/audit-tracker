@@ -11,7 +11,7 @@ const ROLE_LABEL: Record<string, string> = {
   client_reviewer: 'Client reviewer',
 };
 
-export default function UserMenu({ user }: { user: { email: string; role: string } | null }) {
+export default function UserMenu({ user }: { user: { email: string; role: string; systemRole?: 'platform_admin' | 'member' } | null }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
 
@@ -57,7 +57,7 @@ export default function UserMenu({ user }: { user: { email: string; role: string
             </div>
           </div>
           <div className="py-1">
-            {user.role === 'auditor_lead' && (
+            {(user.role === 'auditor_lead' || user.systemRole === 'platform_admin') && (
               <Link
                 href="/settings"
                 onClick={() => setOpen(false)}

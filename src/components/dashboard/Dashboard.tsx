@@ -36,7 +36,7 @@ const PRIORITY_RANK: Record<string, number> = {
   'High': 0, 'Medium-High': 1, 'Medium': 2, 'Low-Medium': 3, 'Low': 4,
 };
 
-export default function Dashboard({ settings }: { settings: EngagementSettings }) {
+export default function Dashboard({ settings, engagementSlug }: { settings: EngagementSettings; engagementSlug?: string }) {
   const [data, setData] = React.useState<DashboardData | null>(null);
   const [pbc, setPbc] = React.useState<PriorityItem[]>([]);
   const { entityId, entities } = useEntityFilter();
@@ -111,8 +111,8 @@ export default function Dashboard({ settings }: { settings: EngagementSettings }
                     {' '}if you already have a workbook with PBC items, walkthroughs, and access requests.
                   </li>
                   <li>
-                    Invite the client team via <Link href={`/engagements`} className="text-navy-700 dark:text-navy-300 underline">Engagements → Members</Link>
-                    {' '}so they can see what to upload.
+                    Invite the client team via the <Link href={engagementSlug ? `/engagements/${engagementSlug}/members` : '/settings'} className="text-navy-700 dark:text-navy-300 underline">Members</Link>
+                    {' '}page so they can see what to upload.
                   </li>
                 </ol>
               </div>

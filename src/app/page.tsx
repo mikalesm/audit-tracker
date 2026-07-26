@@ -30,6 +30,6 @@ export default async function Page() {
       />
     );
   }
-  return <Dashboard settings={settings} />;
+  return <Dashboard settings={settings} engagementSlug={actor.engagement.slug} />;
 }
 
