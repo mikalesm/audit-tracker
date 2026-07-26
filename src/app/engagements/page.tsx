@@ -82,6 +82,14 @@ export default async function EngagementsPage() {
                       }`}>{e.status}</span>
                     </div>
                   </div>
+                  {(isPlatformAdmin || e.role === 'auditor_lead') && (
+                    <Link
+                      href={`/engagements/${e.slug}/members`}
+                      className="px-3 h-8 inline-flex items-center rounded border border-rule dark:border-navy-700 text-[12.5px] text-ink-700 dark:text-slate-300 hover:bg-canvas dark:hover:bg-navy-800"
+                    >
+                      Members
+                    </Link>
+                  )}
                   <EngagementSwitchButton slug={e.slug} />
                 </div>
               ))}

@@ -171,7 +171,7 @@ export default function NewEngagementForm() {
           {submitting ? 'Creating…' : 'Create engagement'}
         </button>
         <p className="text-[11.5px] text-ink-500 dark:text-slate-400">
-          You&apos;ll be added as auditor_lead automatically. After this, add members in Settings → Users & roles.
+          You&apos;ll be added as auditor_lead automatically. After this, add members in Settings → Members & roles.
         </p>
       </div>
     </form>

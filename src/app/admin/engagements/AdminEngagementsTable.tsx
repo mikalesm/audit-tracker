@@ -1,5 +1,6 @@
 'use client';
 import * as React from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 interface Row {
@@ -179,7 +180,15 @@ export default function AdminEngagementsTable({ initial }: { initial: Row[] }) {
                     <option value="archived">archived</option>
                   </select>
                 </td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{row.memberCount}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">
+                  <Link
+                    href={`/engagements/${row.slug}/members`}
+                    title="View / manage members"
+                    className="underline decoration-dotted underline-offset-2 hover:text-navy-700 dark:hover:text-navy-300"
+                  >
+                    {row.memberCount}
+                  </Link>
+                </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{row.itemCount}</td>
                 <td className="px-4 py-2.5 text-ink-500 dark:text-slate-400">
                   {new Date(row.createdAt).toLocaleDateString()}

@@ -37,7 +37,7 @@ export default async function AdminUsersPage() {
         <div className="max-w-[1100px] mx-auto px-6 py-10">
           <h1 className="text-[20px] font-semibold tracking-tight mb-1">Platform users</h1>
           <p className="text-[12px] text-ink-500 dark:text-slate-400 mb-4">
-            Everyone who has signed in at least once. <strong>Platform admins</strong> can create engagements and manage users. <strong>Members</strong> are regular users — their per-engagement role lives on each engagement&apos;s Members page.
+            Everyone who has signed in at least once. <strong>Platform admins</strong> can create engagements and manage users. <strong>Members</strong> are regular users — their per-engagement role lives on each engagement&apos;s Members page: open one from the <Link href="/admin/engagements" className="underline">Engagements tab</Link> by clicking its member count.
           </p>
           <AdminUsersTable initial={users} currentUserId={actor.userId} />
         </div>
