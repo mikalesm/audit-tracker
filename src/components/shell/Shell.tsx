@@ -10,6 +10,7 @@ import KeyboardShortcuts from './KeyboardShortcuts';
 import ThemeToggle from './ThemeToggle';
 import EntityFilter from './EntityFilter';
 import UserMenu from './UserMenu';
+import LegalFooter from '@/components/legal/LegalFooter';
 import { EntityFilterProvider } from './state';
 
 type Role = 'auditor_lead' | 'auditor' | 'client_owner' | 'client_reviewer';
@@ -101,6 +102,8 @@ export default function Shell({ settings, children }: { settings: EngagementSett
   // Render bare chrome on screens that own their own layout: sign-in, the
   // engagement picker and its sub-pages, and the platform admin pages.
   if (pathname === '/signin'
+    || pathname === '/terms'
+    || pathname === '/privacy'
     || pathname === '/engagements'
     || pathname.startsWith('/engagements/')
     || pathname === '/admin'
@@ -351,6 +354,7 @@ function ShellInner({ settings, children }: { settings: EngagementSettings; chil
       </header>
 
       <main className="flex-1 min-w-0">{children}</main>
+      <LegalFooter className="py-4 border-t border-rule dark:border-navy-800" />
       <KeyboardShortcuts />
     </div>
   );
