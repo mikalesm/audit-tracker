@@ -1,21 +1,19 @@
 // Terms of Use and Privacy Notice shown at /terms and /privacy and linked from
 // the footer. Source draft: Claude Docs "Audit Portal Terms of Use and Privacy
-// Notice". Bracketed values in LEGAL are placeholders that must be filled
-// before this ships to prod; bump LEGAL.version whenever the text changes.
+// Notice". Bump LEGAL.version whenever the text changes.
 
 export const LEGAL = {
   version: '1.0',
-  effectiveDate: '[EFFECTIVE DATE]',
+  effectiveDate: '19 October 2026',
   companyName: 'Carpa Tech FZE',
-  address: '[ADDRESS]',
-  licenceNo: '[LICENCE NO.]',
-  contactEmail: '[CONTACT EMAIL]',
-  liabilityCap: '[LIABILITY CAP]',
-  retentionPeriod: '[RETENTION PERIOD]',
+  address: 'Bloc C, SRTIP, Sharjah, United Arab Emirates',
+  contactEmail: 'ops@carpa-tech.com',
+  liabilityCap: 'the fees paid to CarpaTech for the engagement the claim relates to',
+  retentionPeriod: '12 months',
   hostingRegion: 'the Australia East region (New South Wales, Australia)',
   backupRegion: 'Australia Southeast (Victoria, Australia)',
-  governingLaw: 'the United Arab Emirates as applied in the Emirate of Dubai',
-  courts: 'Dubai',
+  governingLaw: 'the United Arab Emirates as applied in the Emirate of Sharjah',
+  courts: 'Sharjah',
 } as const;
 
 export type LegalBlock =
@@ -41,7 +39,7 @@ export const TERMS: LegalDocument = {
     {
       heading: '1. Acceptance',
       blocks: [
-        `These Terms govern your use of the audit portal (the "Portal") operated by ${L.companyName}, ${L.address}, licence ${L.licenceNo} ("CarpaTech", "we"). By signing in to or using the Portal you agree to these Terms and to the Privacy Notice in full. If you do not agree, do not use the Portal. If you use the Portal for an organisation, you confirm you are authorised to accept these Terms for it.`,
+        `These Terms govern your use of the audit portal (the "Portal") operated by ${L.companyName}, ${L.address} ("CarpaTech", "we"). By signing in to or using the Portal you agree to these Terms and to the Privacy Notice in full. If you do not agree, do not use the Portal. If you use the Portal for an organisation, you confirm you are authorised to accept these Terms for it.`,
       ],
     },
     {
