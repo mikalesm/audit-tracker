@@ -113,6 +113,18 @@ When the audit closes:
    az group delete -n rg-audit-<client>-prod
    ```
 
+## 4a. Pin one engagement's evidence to another region
+
+Used when a client needs its files in a specific country. Only the evidence files move: database rows (PBC items, notes, names, activity) stay in the stamp's region.
+
+1. Create a storage account in the target region inside the stamp's RG, matching the main account: StorageV2, HTTPS only, TLS 1.2, no public blob access, versioning on, 30-day blob and container soft delete.
+2. Grant the App Service managed identity `Storage Blob Data Contributor` on it.
+3. Copy `evidence-eng-<id>` server side (`az storage blob copy start-batch` with a read/list container SAS on the source) and compare name, size, MD5 and content type on both sides.
+4. Set the app setting `AZURE_STORAGE_ACCOUNT_OVERRIDES=<id>=<account>` (comma-separate several), then **stop and start** the web app (a restart does not pick up new settings).
+5. The old container is now a stale fallback: uploads after step 4 land only in the new account. Delete it when the client confirms.
+
+Live pins (audit1 stamp): engagement 12 (EMEC) → `stauditemecuaenorth`, UAE North, since 2026-10-19. This account was created with the CLI, not Bicep.
+
 ## 5. Cost reference
 
 | Resource             | SKU              | $/mo     |

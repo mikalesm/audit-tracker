@@ -15,6 +15,11 @@ import { DefaultAzureCredential } from '@azure/identity';
  *    falls back to the Azurite well-known development connection string.
  *  - Local dev with explicit connection string: uses it.
  *  - Azure: uses Managed Identity via DefaultAzureCredential when only the account name is set.
+ *
+ * AZURE_STORAGE_ACCOUNT_OVERRIDES pins individual engagements to another
+ * storage account (Managed Identity only), e.g. "12=stauditemecuaenorth" keeps
+ * EMEC's evidence in UAE North for data residency. Format: comma-separated
+ * <engagementId>=<accountName>. Ignored when a connection string is in use.
  */
 let _service: BlobServiceClient | null = null;
 let _accountName: string | null = null;
@@ -52,6 +57,37 @@ export function blobService(): BlobServiceClient {
   return _service;
 }
 
+let _overrides: Map<number, string> | null = null;
+function accountOverrides(): Map<number, string> {
+  if (_overrides) return _overrides;
+  _overrides = new Map();
+  for (const pair of (process.env.AZURE_STORAGE_ACCOUNT_OVERRIDES ?? '').split(',')) {
+    const [id, account] = pair.split('=').map(x => x.trim());
+    if (!id || !account) continue;
+    const n = Number(id);
+    if (!Number.isInteger(n) || n <= 0 || !/^[a-z0-9]{3,24}$/.test(account)) {
+      throw new Error(`invalid AZURE_STORAGE_ACCOUNT_OVERRIDES entry: ${pair}`);
+    }
+    _overrides.set(n, account);
+  }
+  return _overrides;
+}
+
+const _overrideServices = new Map<string, BlobServiceClient>();
+
+/** The storage account and client that hold an engagement's evidence. */
+function storageFor(engagementId: number): { service: BlobServiceClient; accountName: string | null; viaKey: boolean } {
+  const base = blobService();
+  const account = process.env.AZURE_STORAGE_CONNECTION_STRING ? undefined : accountOverrides().get(engagementId);
+  if (!account) return { service: base, accountName: _accountName, viaKey: !!_accountKey };
+  let service = _overrideServices.get(account);
+  if (!service) {
+    service = new BlobServiceClient(`https://${account}.blob.core.windows.net`, new DefaultAzureCredential());
+    _overrideServices.set(account, service);
+  }
+  return { service, accountName: account, viaKey: false };
+}
+
 /**
  * Each engagement gets its own blob container. Azure storage account names can
  * have hundreds of containers; we use `evidence-eng-<id>` so a future bug that
@@ -75,7 +111,7 @@ export function evidenceContainerFor(engagementId: number): Promise<ContainerCli
   const cached = _ensuredContainers.get(engagementId);
   if (cached) return cached;
   const p = (async () => {
-    const c = blobService().getContainerClient(containerNameFor(engagementId));
+    const c = storageFor(engagementId).service.getContainerClient(containerNameFor(engagementId));
     await c.createIfNotExists();
     return c;
   })();
@@ -94,13 +130,13 @@ export async function downloadSasUrl(
   blobName: string,
   ttlSeconds = 30,
 ): Promise<string> {
-  const service = blobService();
+  const { service, accountName, viaKey } = storageFor(engagementId);
   const containerName = containerNameFor(engagementId);
   const blobClient = service.getContainerClient(containerName).getBlobClient(blobName);
   const expiresOn = new Date(Date.now() + ttlSeconds * 1000);
   const startsOn = new Date(Date.now() - 60 * 1000);
 
-  if (_accountKey && _accountName) {
+  if (viaKey && _accountKey && _accountName) {
     const cred = new StorageSharedKeyCredential(_accountName, _accountKey);
     const sas = generateBlobSASQueryParameters({
       containerName,
@@ -120,6 +156,6 @@ export async function downloadSasUrl(
     permissions: ContainerSASPermissions.parse('r'),
     startsOn,
     expiresOn,
-  }, udk, _accountName ?? '').toString();
+  }, udk, accountName ?? '').toString();
   return `${blobClient.url}?${sas}`;
 }
