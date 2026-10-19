@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { getActor } from '@/lib/rbac';
 import { listEngagementsForUser } from '@/lib/repository/engagements';
 import EngagementSwitchButton from './EngagementSwitchButton';
+import LegalFooter from '@/components/legal/LegalFooter';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,6 +102,8 @@ export default async function EngagementsPage() {
           </div>
         </div>
       </main>
+
+      <LegalFooter className="py-6" />
     </div>
   );
 }
